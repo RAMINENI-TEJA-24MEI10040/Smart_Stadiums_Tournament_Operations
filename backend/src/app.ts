@@ -77,6 +77,8 @@ app.use((_req, _res, next) => {
 // 6. Custom Audit Logger (logs mutative operations)
 app.use(auditLogger);
 
+import path from 'path';
+
 // 7. Endpoint routing prefixes
 app.use('/api/auth', authRouter);
 app.use('/api/matches', matchRouter);
@@ -85,13 +87,24 @@ app.use('/api/incidents', incidentRouter);
 app.use('/api/volunteers', volunteerRouter);
 app.use('/api/ai', aiRouter);
 
-// Standard Health check index route
-app.get('/', (_req, res) => {
-  res.status(200).json({
-    status: 'Success',
-    message: 'Stadium Operations Command Center API Online'
+if (process.env.NODE_ENV === 'production') {
+  const distPath = path.resolve(__dirname, '../../frontend/dist');
+  app.use(express.static(distPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    res.sendFile(path.join(distPath, 'index.html'));
   });
-});
+} else {
+  // Standard Health check index route
+  app.get('/', (_req, res) => {
+    res.status(200).json({
+      status: 'Success',
+      message: 'Stadium Operations Command Center API Online'
+    });
+  });
+}
 
 // 8. Global Error Handler Sanitizer
 app.use(errorHandler);
