@@ -19,7 +19,32 @@ Rather than a single chatbot, the stadium uses a **collaborative network of spec
 
 ---
 
-## 2. In-Memory RAG Vector Pipeline
+## 2. The AI Pipeline & Execution Workflow
+
+Every user query triggers a sequential multi-stage execution pipeline:
+
+```
+User Query ──► [Guardrails Scan] ──► [Intent Classifier] ──► [Context Compiler (MCP)]
+                                                                      │
+                                                                      ▼
+[Response Validation] ◄── [LLM processing] ◄── [RAG Vector Search & Prompt Builder]
+```
+
+### Responsibility of Every Layer
+1. **User Request Layer**: Receives the string query (or speech transcription) from the client drawer.
+2. **Safety Guardrails Scan**: Lexically parses the query. Blocks prompt injections and filters out offensive toxicity. Masks PII parameters (emails, cards, phones).
+3. **Intent Detection Layer**: Classifies the sanitized input into specific domain intents (e.g. Navigation request vs Incident report request).
+4. **Context Manager (Model Context Protocol - MCP)**: Fetches live stadium database entities (e.g., turnstile flows, incidents status feeds, volunteer availability) to provide real-time context.
+5. **RAG Vector Search**: Indexes matching safety codes or evacuation manuals using local TF-IDF vector math and ranks document chunks using Cosine Similarity.
+6. **Prompt Constructor**: Merges the system guidelines, active MCP entity data, RAG chunks, and user query into a single structured prompt.
+7. **LLM Processor**: Sends the prompt to the Gemini API (or the local mock provider if offline).
+8. **Response Validator**: Validates the model's instructions against database truths (e.g. confirming that a gate the AI recommends opening is actually closed).
+9. **Confidence Scorer**: Computes a confidence rating based on verification passes, token counts, and accuracy indexes.
+10. **Client Dispatcher**: Returns the response object (JSON + voice text) back to the UI panel.
+
+---
+
+## 3. In-Memory RAG Vector Pipeline
 
 To give the AI precise context on stadium layout and safety regulations, we implement an in-memory RAG pipeline:
 
@@ -33,25 +58,9 @@ To give the AI precise context on stadium layout and safety regulations, we impl
 
 ---
 
-## 3. AI Safety & Guardrails
+## 4. Semantic Cache & Performance Tuning
 
-The safety middleware ensures operations stay safe and PII remains secure:
-
-- **Prompt Injection Filter**: Blocks prompts containing bypass keywords (e.g. "ignore previous instructions").
-- **Toxicity Scanner**: Flags extreme command requests or threat words.
-- **PII Masking Redactor**: Automatically redacts emails, credit card formats, and telephone sequences.
-- **Hallucination Output Validator**: Cross-references AI recommendations with database facts. If the AI suggests opening an already-opened gate, the validator flags a warning and lowers the confidence score.
-- **Confidence Scoring**: Evaluates output length, structured parsing success, and verification tests.
-
----
-
-## 4. Evaluators & Metrics Dashboard
-
-AI execution metrics are logged in `AiEvaluator`:
-
-- **Token Cost Computations**:
-  - Input tokens: \$0.000075 per 1K tokens.
-  - Output tokens: \$0.000300 per 1K tokens.
-- **Average Latency**: Tracks model execution durations.
-- **Accuracy / Success Rate**: Computes success/failure ratios of API requests.
-- **Hallucinations Log**: Stores historical counts of flagged validator events.
+To decrease query latencies and save API costs:
+- **Semantic Cache**: An in-memory cache stores past queries and their corresponding AI responses.
+- **Similarity Checking**: Incoming prompts are vector-compared against cached queries. If the cosine similarity exceeds **0.96**, the system immediately serves the cached response, bypassing the LLM API call entirely.
+- **Uptime Efficiency**: Reduces latency from ~1.5s down to **<10ms**.

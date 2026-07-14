@@ -1,4 +1,4 @@
-# REST API Specifications: Smart Stadium Operations
+# REST API Specifications
 
 This document specifies the REST routes, Zod validation schemas, and sample request/response JSON structures for the Smart Stadiums backend server.
 
@@ -6,11 +6,13 @@ This document specifies the REST routes, Zod validation schemas, and sample requ
 
 ## 1. Authentication Endpoints
 
-All authorization requires a `Bearer <JWT_TOKEN>` header.
+All authorization requires a `Authorization: Bearer <JWT_TOKEN>` header for guarded routes.
 
 ### 1.1 User Registration
 - **Route**: `POST /api/auth/register`
-- **Payload**:
+- **Method**: `POST`
+- **Auth Required**: No
+- **Payload Schema**:
 ```json
 {
   "username": "opsmanager1",
@@ -37,7 +39,9 @@ All authorization requires a `Bearer <JWT_TOKEN>` header.
 
 ### 1.2 User Login
 - **Route**: `POST /api/auth/login`
-- **Payload**:
+- **Method**: `POST`
+- **Auth Required**: No
+- **Payload Schema**:
 ```json
 {
   "username": "opsmanager1",
@@ -62,31 +66,38 @@ All authorization requires a `Bearer <JWT_TOKEN>` header.
 
 ---
 
-## 2. Tournament matches
+## 2. Tournament Matches API
 
-### 2.1 Schedule Match
+### 2.1 Get Matches
+- **Route**: `GET /api/matches`
+- **Method**: `GET`
+- **Auth Required**: No
+- **Response (200 OK)**: Resolves with an array of matches.
+
+### 2.2 Schedule Match
 - **Route**: `POST /api/matches`
-- **Role Lock**: `OpsManager`, `Director`
-- **Payload**:
+- **Method**: `POST`
+- **Auth Required**: Yes (Roles: `OpsManager`, `Director`)
+- **Payload Schema**:
 ```json
 {
-  "homeTeam": "Manchester United",
-  "awayTeam": "Liverpool",
+  "homeTeam": "Brazil",
+  "awayTeam": "Germany",
   "startTime": "2026-07-15T18:00:00.000Z",
   "endTime": "2026-07-15T20:00:00.000Z",
   "venue": "Stadium Main Arena",
   "referee": "Michael Oliver"
 }
 ```
-- **Response (211 Created)**:
+- **Response (201 Created)**:
 ```json
 {
   "status": "Success",
   "message": "Match scheduled successfully",
   "data": {
     "id": "match-1721029402",
-    "homeTeam": "Manchester United",
-    "awayTeam": "Liverpool",
+    "homeTeam": "Brazil",
+    "awayTeam": "Germany",
     "startTime": "2026-07-15T18:00:00.000Z",
     "endTime": "2026-07-15T20:00:00.000Z",
     "venue": "Stadium Main Arena",
@@ -96,31 +107,34 @@ All authorization requires a `Bearer <JWT_TOKEN>` header.
 }
 ```
 
+### 2.3 Update Match Status
+- **Route**: `PATCH /api/matches/:id/status`
+- **Method**: `PATCH`
+- **Auth Required**: Yes (Roles: `OpsManager`, `Director`)
+- **Payload Schema**:
+```json
+{
+  "status": "Live",
+  "safetyMessage": "Gates opened. Spectators entering."
+}
+```
+- **Response (200 OK)**: Returns updated match entity.
+
 ---
 
 ## 3. IoT Telemetry & Gates
 
-### 3.1 Get Stadium Telemetry
+### 3.1 Get Telemetry
 - **Route**: `GET /api/stadium/telemetry`
-- **Response (200 OK)**:
-```json
-{
-  "status": "Success",
-  "data": {
-    "totalAttendance": 2800,
-    "activeGatesCount": 3,
-    "congestedGatesCount": 1,
-    "averageQueueTime": 15.4,
-    "co2Level": 480,
-    "sustainabilityScore": 86,
-    "powerConsumption": 390
-  }
-}
-```
+- **Method**: `GET`
+- **Auth Required**: No
+- **Response (200 OK)**: Returns aggregated metrics card.
 
 ### 3.2 Update Gate Sensor parameters
 - **Route**: `PUT /api/stadium/gates/:id/telemetry`
-- **Payload**:
+- **Method**: `PUT`
+- **Auth Required**: No
+- **Payload Schema**:
 ```json
 {
   "turnstileFlowRate": 160,
@@ -128,26 +142,37 @@ All authorization requires a `Bearer <JWT_TOKEN>` header.
   "capacityLimit": 1200
 }
 ```
+- **Response (200 OK)**: Returns updated gate details.
+
+### 3.3 Get System Health Checks
+- **Route**: `GET /api/stadium/health`
+- **Method**: `GET`
+- **Auth Required**: No
+- **Response (200 OK)**: Returns server parameters (uptime, memory percentages, CPU loads).
 
 ---
 
-## 4. Safety incidents Dispatcher
+## 4. Safety Incidents Dispatcher
 
-### 4.1 Report Incident
+### 4.1 File Incident
 - **Route**: `POST /api/incidents`
-- **Role Lock**: `OpsManager`, `Security`
-- **Payload**:
+- **Method**: `POST`
+- **Auth Required**: Yes (Roles: `OpsManager`, `Security`)
+- **Payload Schema**:
 ```json
 {
-  "title": "Turnstile scanner failure",
-  "description": "Gate 2 turnstile ticket scanner offline. Queue bottleneck forming.",
+  "title": "Corridor crowd congestion",
+  "description": "Exits on Section C stands blocked by bottlenecks.",
   "severity": "Medium",
-  "location": "Gate 2 East entrance"
+  "location": "Section C Stand corridor"
 }
 ```
+- **Response (201 Created)**: Returns filed incident.
 
 ### 4.2 Compile AI Briefing Report
-- **Route**: `POST /api/incidents/:id/summary`
+- **Route**: `POST /api/incidents/:id/ai-summary`
+- **Method**: `POST`
+- **Auth Required**: Yes (Roles: `OpsManager`, `Security`)
 - **Response (200 OK)**:
 ```json
 {
@@ -166,7 +191,9 @@ All authorization requires a `Bearer <JWT_TOKEN>` header.
 
 ### 5.1 AI Command Query
 - **Route**: `POST /api/ai/query`
-- **Payload**:
+- **Method**: `POST`
+- **Auth Required**: Yes
+- **Payload Schema**:
 ```json
 {
   "query": "Identify congested gates and recommend actions.",
@@ -180,16 +207,16 @@ All authorization requires a `Bearer <JWT_TOKEN>` header.
   "source": "Live Model",
   "data": {
     "agentName": "Crowd",
-    "responseText": "{\n  \"intent\": \"Crowd Congestion Analysis\",\n  \"riskScore\": 78,\n  \"congestedAreas\": [\"Gate 2 (East Gate)\"],\n  \"explanation\": \"East Gate 2 occupancy is at 1150/1200 capacity limit...\"\n}",
+    "responseText": "Congested gates identified at East entrance. Recommend opening alternate Gate 4 West.",
     "confidenceScore": 0.98,
     "suggestedTools": [
       {
         "name": "updateGateStatus",
-        "params": { "gateId": "gate-3", "status": "Open" }
+        "params": { "gateId": "gate-4", "status": "Open" }
       }
     ],
     "metrics": {
-      "latencyMs: 80",
+      "latencyMs": 85,
       "tokens": 165,
       "costUSD": 0.00004
     }

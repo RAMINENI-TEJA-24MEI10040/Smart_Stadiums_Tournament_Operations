@@ -34,26 +34,60 @@ The codebase is strictly separated into four layers to ensure independence of fr
 ```
 
 ### 1.1 Presentation Layer
-- **Controllers**: Thin controllers that extract HTTP requests parameters, validate them using Zod, delegate processing to the application service, and map outputs to DTOs.
-- **Routes**: Standard Express routes with security headers (Helmet) and IP rate-limiting applied.
-- **Middleware**: Interceptors managing JWT verification, CORS control, error sanitization, and structured audit logs.
+- **Responsibility**: Interface with the external client. It translates HTTP requests to application commands and translates service results back into JSON.
+- **Controllers**: Thin controllers that extract request data, validate it using Zod schemas, and delegate use cases to services.
+- **Routes**: Direct incoming URLs to specific controller handlers with appropriate safety guardrails ( Helmet, Rate Limiters).
+- **Middlewares**: Enforces security parameters (JWT auth, RBAC authorization, audit logging, and global error handling).
+- **Why this improves maintainability**: Decoupling the routing engine (Express) ensures that if the server framework is swapped, the business services remain completely unaffected.
 
 ### 1.2 Application Layer
-- **Services**: Orchestrates domain logic rules. Coordinates database transactions, schedules tournament matches (performing venue double booking checks), updates gate telemetry, and initiates emergency dispatches.
-- **Interfaces**: Abstract contracts for repositories and external services (e.g. AI Provider), decoupling application logic from concrete database clients.
+- **Responsibility**: Orchestrates the application use cases, defining the flow of data to and from the domain entities.
+- **Services**: Classes like `TournamentService` and `StadiumService` coordinating workflows (scheduling matches, recording sensor telemetry, managing incidents).
+- **Service Contracts**: Interfaces (e.g. `ITournamentService` inside `services.interface.ts`) define what operations can be performed, decoupling the controllers from service implementations.
+- **Why this improves maintainability**: Centralizes the flow of business transactions. Use case logic can be unit-tested in isolation by mocking the database repositories.
 
 ### 1.3 Domain Layer
-- **Entities**: Business core models (`User`, `Match`, `Gate`, `Incident`, `Volunteer`, `Telemetry`) initialized with constructors and static validation logic. Contains no framework dependencies.
+- **Responsibility**: Holds the enterprise business rules, entities, and value objects. This is the core of the system and contains zero dependencies on external libraries, frameworks, or databases.
+- **Entities**: Rich models (e.g., `Match`, `Gate`, `Incident`, `Volunteer`, `User`) implementing validation and state mutation logic.
+- **Why this improves maintainability**: The core business logic is isolated and protected from external framework updates, database migrations, or UI changes.
 
 ### 1.4 Infrastructure Layer
-- **Database Adapters**: Switched factory loading Postgres, SQLite, or local atomic JSON file repository configurations.
-- **AI Core (MCP)**: System combining Specialized Agents, Vector search (local BM25 + cosine similarity RAG), Prompts template engines, and safety Guardrails.
-- **Caching**: TTL-limited semantic response caching mapping prompt vectors.
-- **Telemetry**: OpenTelemetry wrapper recording request latency distributions, system CPU/RAM, and model token costs.
+- **Responsibility**: Implements repository abstractions, integrates database connections, handles caching, logs observability, and interfaces with the LLM API.
+- **Database Repositories**: Implement database interface contracts (e.g., `IMatchRepository`) for PostgreSQL, SQLite WASM, and JSON flat files.
+- **AI Orchestration**: Houses the vector database, TF-IDF indexer, specialize agents, prompt caching, and input safety guardrails.
+- **Why this improves maintainability**: Allows the data storage engine to be swapped dynamically via environment variables without altering a single line of business logic.
 
 ---
 
-## 2. Model Context Protocol (MCP) Agent Flow
+## 2. Dependency Flow & Dependency Injection (DI)
+
+To comply with the **Dependency Inversion Principle (DIP)**:
+1. High-level modules (Services) do not depend on low-level modules (Database Adapters). Instead, both depend on abstractions (Interfaces).
+2. Abstractions are defined in the Application/Domain layer, while implementations are housed in the Infrastructure layer.
+
+### Constructor Injection Pattern
+Services are structured to receive repository contracts through their constructor:
+```typescript
+export class TournamentService implements ITournamentService {
+  constructor(private readonly matchRepository: IMatchRepository) {}
+}
+```
+During runtime, the database factory builds the concrete repository matching the `DB_PROVIDER` environment variable and injects it into the service. In tests, mock repository instances are passed instead, achieving complete testing isolation.
+
+---
+
+## 3. The Repository Pattern
+
+The repository pattern isolates the data access operations behind a clean, domain-centric collection interface. It provides:
+- **Encapsulation**: Services query database engines without knowing whether the backend is powered by SQL queries or local file operations.
+- **Swappable Providers**: 
+  - `PostgresUserRepository`: Active in production using client pooling.
+  - `SqliteUserRepository`: Active in local development using a WebAssembly database (`sql.js`).
+  - `JsonUserRepository`: Used as an offline demonstration fallback.
+
+---
+
+## 4. Model Context Protocol (MCP) Agent Flow
 
 The Generative AI core acts as the smart orchestration brain, querying and modifying stadium operations via a Tool Registry:
 
