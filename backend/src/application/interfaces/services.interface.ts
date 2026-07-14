@@ -1,4 +1,4 @@
-import { User, UserRole } from '../../domain/entities/user.entity';
+import { User, UserRole, UserProfile, AuthResult } from '../../domain/entities/user.entity';
 import { Match, MatchStatus } from '../../domain/entities/match.entity';
 import { Gate, GateStatus } from '../../domain/entities/gate.entity';
 import { Telemetry } from '../../domain/entities/telemetry.entity';
@@ -13,8 +13,8 @@ export interface IAuthService {
     name: string;
     email: string;
   }): Promise<User>;
-  login(username: string, passwordPlain: string): Promise<{ token: string; user: any }>;
-  getUserProfile(id: string): Promise<any>;
+  login(username: string, passwordPlain: string): Promise<AuthResult>;
+  getUserProfile(id: string): Promise<UserProfile>;
 }
 
 export interface ITournamentService {

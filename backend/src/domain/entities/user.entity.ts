@@ -1,5 +1,21 @@
 export type UserRole = 'OpsManager' | 'Director' | 'Security' | 'Volunteer';
 
+/** Serialized representation of a User entity — safe to return in HTTP responses. */
+export interface UserProfile {
+  id: string;
+  username: string;
+  role: UserRole;
+  name: string;
+  email: string;
+  createdAt: string;
+}
+
+/** Return value of a successful authentication operation. */
+export interface AuthResult {
+  token: string;
+  user: UserProfile;
+}
+
 export class User {
   constructor(
     public readonly id: string,
@@ -11,7 +27,7 @@ export class User {
     public readonly createdAt: Date
   ) {}
 
-  public toJSON() {
+  public toJSON(): UserProfile {
     return {
       id: this.id,
       username: this.username,

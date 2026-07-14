@@ -1,39 +1,45 @@
-name: Continuous Integration Checks
+name: Continuous Integration
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master, develop]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 
 jobs:
   validate:
+    name: Lint, Type-check, Test & Build
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Code Repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Node.js Environment
-      uses: actions/setup-node@v4
-      with:
-        node-index: '20'
-        cache: 'npm'
+      - name: Set up Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
 
-    - name: Install Workspace Dependencies
-      run: npm run setup
+      - name: Install workspace dependencies
+        run: npm run setup
 
-    - name: Run Backend Linter & Typechecks
-      run: |
-        npm --workspace=backend run lint || true
-        npm --workspace=backend run typecheck
+      - name: TypeScript type-check (backend)
+        run: npm --workspace=backend run typecheck
 
-    - name: Run Frontend Typechecks
-      run: |
-        npm --workspace=frontend run typecheck
+      - name: TypeScript type-check (frontend)
+        run: npm --workspace=frontend run typecheck
 
-    - name: Run Automated Backend Tests
-      run: npm run test:backend
+      - name: Run automated backend tests
+        run: npm run test:backend
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-test-secret-key-minimum-32-characters
+          DB_PROVIDER: sqlite
+          GEMINI_API_KEY: mock-key-for-ci
 
-    - name: Compiles Production Build Check
-      run: npm run build
+      - name: Compile production build (backend)
+        run: npm --workspace=backend run build
+
+      - name: Compile production build (frontend)
+        run: npm --workspace=frontend run build

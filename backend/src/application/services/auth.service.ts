@@ -1,7 +1,7 @@
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { dbFactoryInstance } from '../../infrastructure/database/db-factory';
-import { User, UserRole } from '../../domain/entities/user.entity';
+import { User, UserRole, UserProfile, AuthResult } from '../../domain/entities/user.entity';
 import { IAuthService } from '../interfaces/services.interface';
 import { IUserRepository } from '../interfaces/user-repository.interface';
 import { ConflictException, UnauthorizedException, NotFoundException } from '../../shared/exceptions';
@@ -75,7 +75,7 @@ export class AuthService implements IAuthService {
    * @param passwordPlain Cleartext password.
    * @returns Signed JWT token and user details payload.
    */
-  public async login(username: string, passwordPlain: string): Promise<{ token: string; user: any }> {
+  public async login(username: string, passwordPlain: string): Promise<AuthResult> {
     logger.info(`Authentication requested for username: ${username}`);
     const user = await this.userRepo.findByUsername(username);
     if (!user) {
@@ -108,7 +108,7 @@ export class AuthService implements IAuthService {
    * @param id Target user identifier.
    * @returns User details JSON payload.
    */
-  public async getUserProfile(id: string): Promise<any> {
+  public async getUserProfile(id: string): Promise<UserProfile> {
     logger.info(`Profile details requested for User ID: ${id}`);
     const user = await this.userRepo.findById(id);
     if (!user) {
