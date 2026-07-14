@@ -1,0 +1,115 @@
+/* Design Tokens System */
+
+:root {
+  /* Fonts */
+  --font-heading: 'Outfit', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Spacing Grid (8pt system) */
+  --spacing-xxs: 4px;
+  --spacing-xs: 8px;
+  --spacing-sm: 12px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 48px;
+
+  /* Border Radii */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* HSL Palette - Light Mode Default */
+  --hue-primary: 220; /* Sleek Navy */
+  --hue-accent: 145;  /* Emerald Sustainability Green */
+  --hue-warning: 35;  /* Congestion Amber */
+  --hue-danger: 0;    /* Security Red */
+  
+  --bg-primary: hsl(var(--hue-primary), 15%, 98%);
+  --bg-secondary: hsl(var(--hue-primary), 12%, 94%);
+  --bg-card: hsl(0, 0%, 100%);
+  --bg-input: hsl(var(--hue-primary), 10%, 96%);
+
+  --text-primary: hsl(var(--hue-primary), 35%, 15%);
+  --text-secondary: hsl(var(--hue-primary), 20%, 45%);
+  --text-inverse: hsl(0, 0%, 100%);
+
+  --color-primary: hsl(var(--hue-primary), 80%, 40%);
+  --color-accent: hsl(var(--hue-accent), 65%, 35%);
+  --color-warning: hsl(var(--hue-warning), 85%, 45%);
+  --color-danger: hsl(var(--hue-danger), 75%, 45%);
+
+  --border-color: hsl(var(--hue-primary), 15%, 88%);
+  --focus-ring: 0 0 0 3px hsl(var(--hue-primary), 70%, 75%);
+
+  /* Glassmorphism Defaults */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.4);
+  --glass-blur: blur(12px);
+
+  /* Animation Timings */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Dark Mode Tokens Override */
+[data-theme='dark'] {
+  --bg-primary: hsl(var(--hue-primary), 20%, 8%);
+  --bg-secondary: hsl(var(--hue-primary), 18%, 12%);
+  --bg-card: hsl(var(--hue-primary), 15%, 15%);
+  --bg-input: hsl(var(--hue-primary), 12%, 18%);
+
+  --text-primary: hsl(var(--hue-primary), 10%, 92%);
+  --text-secondary: hsl(var(--hue-primary), 10%, 70%);
+  --text-inverse: hsl(var(--hue-primary), 20%, 8%);
+
+  --color-primary: hsl(var(--hue-primary), 70%, 60%);
+  --color-accent: hsl(var(--hue-accent), 65%, 45%);
+  --color-warning: hsl(var(--hue-warning), 80%, 55%);
+  --color-danger: hsl(var(--hue-danger), 80%, 55%);
+
+  --border-color: hsl(var(--hue-primary), 15%, 22%);
+  --focus-ring: 0 0 0 3px rgba(100, 150, 255, 0.5);
+
+  --glass-bg: rgba(20, 25, 35, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.08);
+}
+
+/* WCAG AAA High Contrast Theme Override */
+[data-contrast='high'] {
+  --bg-primary: #000000;
+  --bg-secondary: #121212;
+  --bg-card: #000000;
+  --bg-input: #1f1f1f;
+
+  --text-primary: #ffffff;
+  --text-secondary: #e0e0e0;
+  --text-inverse: #000000;
+
+  --color-primary: #ffff00; /* Pure yellow for high contrast visibility */
+  --color-accent: #00ff00;  /* Neon green */
+  --color-warning: #ffaa00;
+  --color-danger: #ff3333;
+
+  --border-color: #ffffff;
+  --focus-ring: 0 0 0 4px #ffff00;
+
+  --glass-bg: #000000;
+  --glass-border: #ffffff;
+  --glass-blur: none;
+}
+
+/* Reduced Motion Override */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: 0s !important;
+    --transition-normal: 0s !important;
+    --glass-blur: none !important;
+  }
+}

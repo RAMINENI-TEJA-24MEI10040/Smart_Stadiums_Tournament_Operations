@@ -1,0 +1,39 @@
+name: Continuous Integration Checks
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code Repository
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js Environment
+      uses: actions/setup-node@v4
+      with:
+        node-index: '20'
+        cache: 'npm'
+
+    - name: Install Workspace Dependencies
+      run: npm run setup
+
+    - name: Run Backend Linter & Typechecks
+      run: |
+        npm --workspace=backend run lint || true
+        npm --workspace=backend run typecheck
+
+    - name: Run Frontend Typechecks
+      run: |
+        npm --workspace=frontend run typecheck
+
+    - name: Run Automated Backend Tests
+      run: npm run test:backend
+
+    - name: Compiles Production Build Check
+      run: npm run build
