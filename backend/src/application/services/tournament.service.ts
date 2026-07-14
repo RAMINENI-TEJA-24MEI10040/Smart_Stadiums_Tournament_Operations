@@ -1,18 +1,32 @@
 import { dbFactoryInstance } from '../../infrastructure/database/db-factory';
 import { Match, MatchStatus } from '../../domain/entities/match.entity';
+import { ITournamentService } from '../interfaces/services.interface';
+import { IMatchRepository } from '../interfaces/match-repository.interface';
+import { ConflictException, NotFoundException } from '../../shared/exceptions';
+import { logger } from '../../shared/logger';
 
 /**
  * Service orchestrating tournament match scheduling, venue conflict validations,
  * and real-time status changes.
  */
-export class TournamentService {
+export class TournamentService implements ITournamentService {
+  private matchRepository?: IMatchRepository;
+
+  constructor(matchRepository?: IMatchRepository) {
+    this.matchRepository = matchRepository;
+  }
+
+  private get matchRepo(): IMatchRepository {
+    return this.matchRepository || dbFactoryInstance.getRepositories().matchRepository;
+  }
+
   /**
    * Schedules a new tournament match.
    * Performs strict venue double-booking validation to ensure no overlapping match schedules.
    *
    * @param payload Home team, away team, time bounds, venue, and assigned referee.
    * @returns The scheduled Match domain entity.
-   * @throws Error if another match conflicts with the venue and time block.
+   * @throws ConflictException if another match conflicts with the venue and time block.
    */
   public async scheduleMatch(payload: {
     homeTeam: string;
@@ -22,8 +36,8 @@ export class TournamentService {
     venue: string;
     referee: string;
   }): Promise<Match> {
-    const repos = dbFactoryInstance.getRepositories();
-    const matches = await repos.matchRepository.findAll();
+    logger.info(`Request received to schedule match: ${payload.homeTeam} vs ${payload.awayTeam} at ${payload.venue}`);
+    const matches = await this.matchRepo.findAll();
     
     // Check for double bookings (same venue, overlapping times)
     const newStart = new Date(payload.startTime).getTime();
@@ -37,7 +51,8 @@ export class TournamentService {
     });
 
     if (hasConflict) {
-      throw new Error('Scheduling Conflict: The selected venue is already booked for this time block.');
+      logger.warn(`Scheduling conflict detected for venue: ${payload.venue} between ${payload.startTime} and ${payload.endTime}`);
+      throw new ConflictException('Scheduling Conflict: The selected venue is already booked for this time block.');
     }
 
     const matchId = `match-${Date.now()}`;
@@ -54,7 +69,9 @@ export class TournamentService {
       new Date()
     );
 
-    return repos.matchRepository.save(newMatch);
+    const saved = await this.matchRepo.save(newMatch);
+    logger.info(`Match successfully scheduled with ID: ${matchId}`);
+    return saved;
   }
 
   /**
@@ -63,8 +80,8 @@ export class TournamentService {
    * @returns List of Match domain entities.
    */
   public async getMatches(): Promise<Match[]> {
-    const repos = dbFactoryInstance.getRepositories();
-    return repos.matchRepository.findAll();
+    logger.info('Fetching scheduled matches from repository');
+    return this.matchRepo.findAll();
   }
 
   /**
@@ -74,12 +91,14 @@ export class TournamentService {
    * @param status Target match status state.
    * @param safetyMessage Optional safety notification text to log.
    * @returns The updated Match domain entity state.
+   * @throws NotFoundException if the match is not found.
    */
   public async updateMatchStatus(matchId: string, status: MatchStatus, safetyMessage?: string): Promise<Match> {
-    const repos = dbFactoryInstance.getRepositories();
-    const match = await repos.matchRepository.findById(matchId);
+    logger.info(`Request received to update match status: Match ID ${matchId} to ${status}`);
+    const match = await this.matchRepo.findById(matchId);
     if (!match) {
-      throw new Error('Match not found');
+      logger.warn(`Match status update rejected: Match ID ${matchId} not found`);
+      throw new NotFoundException('Match not found');
     }
 
     const logs = [...match.safetyLog];
@@ -101,7 +120,9 @@ export class TournamentService {
       match.createdAt
     );
 
-    return repos.matchRepository.save(updatedMatch);
+    const saved = await this.matchRepo.save(updatedMatch);
+    logger.info(`Match status successfully updated for ID: ${matchId}`);
+    return saved;
   }
 }
 

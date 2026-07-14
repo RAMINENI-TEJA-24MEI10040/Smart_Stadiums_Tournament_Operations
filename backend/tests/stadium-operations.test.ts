@@ -1,3 +1,7 @@
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+dotenv.config({ path: path.join(__dirname, '..', '..', '.env') });
+
 import request from 'supertest';
 import app from '../src/app';
 import { dbFactoryInstance } from '../src/infrastructure/database/db-factory';
@@ -115,7 +119,7 @@ describe('Smart Stadiums & Tournament Operations Enterprise Tests', () => {
           username: 'director1',
           password: 'wrongpassword'
         });
-      expect(res.status).toBe(500); // Handled by global error handler
+      expect(res.status).toBe(401); // Handled by global error handler (UnauthorizedException)
     });
   });
 
@@ -151,7 +155,7 @@ describe('Smart Stadiums & Tournament Operations Enterprise Tests', () => {
           venue: 'Stadium Main Arena',
           referee: 'Marciniak'
         });
-      expect(res.status).toBe(500); // Double Booking conflict check catches overlapping hours
+      expect(res.status).toBe(409); // Double Booking conflict check catches overlapping hours (ConflictException)
     });
   });
 

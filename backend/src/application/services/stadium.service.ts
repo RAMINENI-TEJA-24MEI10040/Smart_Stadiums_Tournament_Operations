@@ -1,19 +1,40 @@
 import { dbFactoryInstance } from '../../infrastructure/database/db-factory';
 import { Gate, GateStatus } from '../../domain/entities/gate.entity';
 import { Telemetry } from '../../domain/entities/telemetry.entity';
+import { IStadiumService } from '../interfaces/services.interface';
+import { IGateRepository } from '../interfaces/gate-repository.interface';
+import { ITelemetryRepository } from '../interfaces/telemetry-repository.interface';
+import { NotFoundException } from '../../shared/exceptions';
+import { logger } from '../../shared/logger';
 
 /**
  * Service managing stadium operations, gate statuses, and real-time environmental telemetry metrics.
  */
-export class StadiumService {
+export class StadiumService implements IStadiumService {
+  private gateRepository?: IGateRepository;
+  private telemetryRepository?: ITelemetryRepository;
+
+  constructor(gateRepository?: IGateRepository, telemetryRepository?: ITelemetryRepository) {
+    this.gateRepository = gateRepository;
+    this.telemetryRepository = telemetryRepository;
+  }
+
+  private get gateRepo(): IGateRepository {
+    return this.gateRepository || dbFactoryInstance.getRepositories().gateRepository;
+  }
+
+  private get telemetryRepo(): ITelemetryRepository {
+    return this.telemetryRepository || dbFactoryInstance.getRepositories().telemetryRepository;
+  }
+
   /**
    * Retrieves all entry gates configuration and statuses.
    *
    * @returns List of Gate domain entities.
    */
   public async getGates(): Promise<Gate[]> {
-    const repos = dbFactoryInstance.getRepositories();
-    return repos.gateRepository.findAll();
+    logger.info('Fetching gates list from repository');
+    return this.gateRepo.findAll();
   }
 
   /**
@@ -22,13 +43,14 @@ export class StadiumService {
    * @param gateId Targeted gate identifier.
    * @param status Next status state.
    * @returns The updated Gate domain entity.
-   * @throws Error if the gate does not exist.
+   * @throws NotFoundException if the gate does not exist.
    */
   public async updateGateStatus(gateId: string, status: GateStatus): Promise<Gate> {
-    const repos = dbFactoryInstance.getRepositories();
-    const gate = await repos.gateRepository.findById(gateId);
+    logger.info(`Request received to update Gate ID: ${gateId} status to ${status}`);
+    const gate = await this.gateRepo.findById(gateId);
     if (!gate) {
-      throw new Error('Gate not found');
+      logger.warn(`Gate status update rejected: Gate ID ${gateId} not found`);
+      throw new NotFoundException('Gate not found');
     }
 
     const updatedGate = new Gate(
@@ -41,7 +63,9 @@ export class StadiumService {
       new Date()
     );
 
-    return repos.gateRepository.save(updatedGate);
+    const saved = await this.gateRepo.save(updatedGate);
+    logger.info(`Gate ID ${gateId} status updated successfully`);
+    return saved;
   }
 
   /**
@@ -50,23 +74,20 @@ export class StadiumService {
    * @param gateId Target gate identifier.
    * @param payload Live turnstile flow rate, spectator occupancy, and absolute limits.
    * @returns Resolves with the mutated Gate domain entity.
+   * @throws NotFoundException if the gate does not exist.
    */
   public async updateGateTelemetry(
     gateId: string,
     payload: { turnstileFlowRate: number; currentOccupancy: number; capacityLimit: number }
   ): Promise<Gate> {
-    const repos = dbFactoryInstance.getRepositories();
-    const gate = await repos.gateRepository.findById(gateId);
+    logger.info(`Received telemetry packet from IoT sensors for Gate ID: ${gateId}`);
+    const gate = await this.gateRepo.findById(gateId);
     if (!gate) {
-      throw new Error('Gate not found');
+      logger.warn(`Gate telemetry update rejected: Gate ID ${gateId} not found`);
+      throw new NotFoundException('Gate not found');
     }
 
-    let status: GateStatus = 'Open';
-    if (payload.currentOccupancy >= payload.capacityLimit) {
-      status = 'Congested';
-    } else if (payload.turnstileFlowRate === 0) {
-      status = 'Closed';
-    }
+    const status = this.determineGateStatus(payload.turnstileFlowRate, payload.currentOccupancy, payload.capacityLimit);
 
     const updatedGate = new Gate(
       gate.id,
@@ -78,7 +99,8 @@ export class StadiumService {
       new Date()
     );
 
-    await repos.gateRepository.save(updatedGate);
+    await this.gateRepo.save(updatedGate);
+    logger.info(`Gate telemetry registered for Gate ID ${gateId}. Recalculating aggregates...`);
     await this.recalculateTelemetryMetrics();
     return updatedGate;
   }
@@ -89,8 +111,8 @@ export class StadiumService {
    * @returns Latest Telemetry card, or null if none recorded.
    */
   public async getTelemetry(): Promise<Telemetry | null> {
-    const repos = dbFactoryInstance.getRepositories();
-    return repos.telemetryRepository.getLatest();
+    logger.info('Fetching latest telemetry aggregate card');
+    return this.telemetryRepo.getLatest();
   }
 
   /**
@@ -99,8 +121,8 @@ export class StadiumService {
    * @returns List of Telemetry logs.
    */
   public async getTelemetryHistory(): Promise<Telemetry[]> {
-    const repos = dbFactoryInstance.getRepositories();
-    return repos.telemetryRepository.getHistory(30);
+    logger.info('Fetching historical telemetry logs');
+    return this.telemetryRepo.getHistory(30);
   }
 
   /**
@@ -109,9 +131,49 @@ export class StadiumService {
    * @returns The newly updated Telemetry aggregates log.
    */
   public async recalculateTelemetryMetrics(): Promise<Telemetry> {
-    const repos = dbFactoryInstance.getRepositories();
-    const gates = await repos.gateRepository.findAll();
-    
+    logger.info('Recalculating stadium aggregate telemetry indexes...');
+    const gates = await this.gateRepo.findAll();
+    const stats = this.calculateGateStats(gates);
+    const utilities = this.calculateUtilityLoads(stats.totalAttendance);
+
+    const newTelemetry = new Telemetry(
+      'stadium-main',
+      stats.totalAttendance,
+      stats.activeCount,
+      stats.congestedCount,
+      stats.averageQueueTime,
+      utilities.co2Level,
+      24.5,
+      utilities.sustainabilityScore,
+      utilities.powerConsumption,
+      utilities.waterUsage,
+      utilities.carbonFootprint,
+      new Date()
+    );
+
+    const saved = await this.telemetryRepo.save(newTelemetry);
+    logger.info('Stadium aggregate metrics updated and persisted.', { totalAttendance: stats.totalAttendance, averageQueueTime: stats.averageQueueTime });
+    return saved;
+  }
+
+  // --- Private Helpers to Reduce Cyclomatic Complexity ---
+
+  private determineGateStatus(flowRate: number, occupancy: number, limit: number): GateStatus {
+    if (occupancy >= limit) {
+      return 'Congested';
+    }
+    if (flowRate === 0) {
+      return 'Closed';
+    }
+    return 'Open';
+  }
+
+  private calculateGateStats(gates: Gate[]): {
+    totalAttendance: number;
+    activeCount: number;
+    congestedCount: number;
+    averageQueueTime: number;
+  } {
     let totalAttendance = 0;
     let activeCount = 0;
     let congestedCount = 0;
@@ -121,7 +183,6 @@ export class StadiumService {
       totalAttendance += g.currentOccupancy;
       if (g.status !== 'Closed' && g.status !== 'Maintenance') {
         activeCount += 1;
-        // Turnstile queue delay estimation (Occupancy / flow rate)
         if (g.turnstileFlowRate > 0) {
           totalQueueTime += (g.currentOccupancy / g.turnstileFlowRate);
         }
@@ -131,35 +192,41 @@ export class StadiumService {
       }
     });
 
-    const averageQueueTime = activeCount > 0 ? (totalQueueTime / activeCount) : 0;
+    const averageQueueTime = activeCount > 0 ? Number((totalQueueTime / activeCount).toFixed(1)) : 0;
 
-    // Utility load scales dynamically with attendance
+    return {
+      totalAttendance,
+      activeCount,
+      congestedCount,
+      averageQueueTime
+    };
+  }
+
+  private calculateUtilityLoads(totalAttendance: number): {
+    co2Level: number;
+    powerConsumption: number;
+    waterUsage: number;
+    carbonFootprint: number;
+    sustainabilityScore: number;
+  } {
     const attendanceFactor = totalAttendance / 5000;
     const co2Level = Math.round(400 + 300 * attendanceFactor);
     const powerConsumption = Math.round(200 + 400 * attendanceFactor);
     const waterUsage = Math.round(50 + 150 * attendanceFactor);
     const carbonFootprint = Number((powerConsumption * 0.45).toFixed(2));
     
-    // Higher attendance slightly lowers sustainability rating unless mitigation steps taken
     let sustainabilityScore = 90 - Math.round(15 * attendanceFactor);
-    if (sustainabilityScore < 50) sustainabilityScore = 50;
+    if (sustainabilityScore < 50) {
+      sustainabilityScore = 50;
+    }
 
-    const newTelemetry = new Telemetry(
-      'stadium-main',
-      totalAttendance,
-      activeCount,
-      congestedCount,
-      Number(averageQueueTime.toFixed(1)),
+    return {
       co2Level,
-      24.5,
-      sustainabilityScore,
       powerConsumption,
       waterUsage,
       carbonFootprint,
-      new Date()
-    );
-
-    return repos.telemetryRepository.save(newTelemetry);
+      sustainabilityScore
+    };
   }
 }
 

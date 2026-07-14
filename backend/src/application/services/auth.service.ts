@@ -2,16 +2,31 @@ import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { dbFactoryInstance } from '../../infrastructure/database/db-factory';
 import { User, UserRole } from '../../domain/entities/user.entity';
+import { IAuthService } from '../interfaces/services.interface';
+import { IUserRepository } from '../interfaces/user-repository.interface';
+import { ConflictException, UnauthorizedException, NotFoundException } from '../../shared/exceptions';
+import { logger } from '../../shared/logger';
 
 /**
  * Service managing user registration, authentication, and security token signatures.
  */
-export class AuthService {
+export class AuthService implements IAuthService {
   private jwtSecret: string;
   private tokenExpiry: string = '24h';
+  private userRepository?: IUserRepository;
 
-  constructor() {
-    this.jwtSecret = process.env.JWT_SECRET || 'stadium-secret-key-999';
+  constructor(userRepository?: IUserRepository) {
+    this.userRepository = userRepository;
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      logger.error('Fatal initialization error: JWT_SECRET environment variable is missing.');
+      throw new Error('JWT_SECRET environment variable is required.');
+    }
+    this.jwtSecret = secret;
+  }
+
+  private get userRepo(): IUserRepository {
+    return this.userRepository || dbFactoryInstance.getRepositories().userRepository;
   }
 
   /**
@@ -27,16 +42,16 @@ export class AuthService {
     name: string;
     email: string;
   }): Promise<User> {
-    const repos = dbFactoryInstance.getRepositories();
-    const existing = await repos.userRepository.findByUsername(payload.username);
+    logger.info(`Attempting to register user: ${payload.username}`);
+    const existing = await this.userRepo.findByUsername(payload.username);
     if (existing) {
-      throw new Error('Registration failed: Username already exists');
+      logger.warn(`Registration rejected: Username ${payload.username} already exists`);
+      throw new ConflictException('Registration failed: Username already exists');
     }
 
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash(payload.passwordPlain, salt);
     
-    // Auto-generate a simple ID
     const userId = `usr-${Date.now()}`;
     const user = new User(
       userId,
@@ -48,7 +63,9 @@ export class AuthService {
       new Date()
     );
 
-    return repos.userRepository.save(user);
+    const saved = await this.userRepo.save(user);
+    logger.info(`User registered successfully: ${payload.username} with ID: ${userId}`);
+    return saved;
   }
 
   /**
@@ -59,15 +76,17 @@ export class AuthService {
    * @returns Signed JWT token and user details payload.
    */
   public async login(username: string, passwordPlain: string): Promise<{ token: string; user: any }> {
-    const repos = dbFactoryInstance.getRepositories();
-    const user = await repos.userRepository.findByUsername(username);
+    logger.info(`Authentication requested for username: ${username}`);
+    const user = await this.userRepo.findByUsername(username);
     if (!user) {
-      throw new Error('Authentication failed: Invalid credentials');
+      logger.warn(`Authentication failed: User ${username} not found`);
+      throw new UnauthorizedException('Authentication failed: Invalid credentials');
     }
 
     const isMatch = await bcrypt.compare(passwordPlain, user.passwordHash);
     if (!isMatch) {
-      throw new Error('Authentication failed: Invalid credentials');
+      logger.warn(`Authentication failed: Incorrect password hash for user ${username}`);
+      throw new UnauthorizedException('Authentication failed: Invalid credentials');
     }
 
     const token = jwt.sign(
@@ -76,6 +95,7 @@ export class AuthService {
       { expiresIn: this.tokenExpiry as any }
     );
 
+    logger.info(`Authentication successful for user: ${username}, token signed`);
     return {
       token,
       user: user.toJSON()
@@ -89,10 +109,11 @@ export class AuthService {
    * @returns User details JSON payload.
    */
   public async getUserProfile(id: string): Promise<any> {
-    const repos = dbFactoryInstance.getRepositories();
-    const user = await repos.userRepository.findById(id);
+    logger.info(`Profile details requested for User ID: ${id}`);
+    const user = await this.userRepo.findById(id);
     if (!user) {
-      throw new Error('Profile not found');
+      logger.warn(`Profile query failed: User ID ${id} not found in database`);
+      throw new NotFoundException('Profile not found');
     }
     return user.toJSON();
   }

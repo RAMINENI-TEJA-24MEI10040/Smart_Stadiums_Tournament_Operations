@@ -1,10 +1,24 @@
 import { dbFactoryInstance } from '../../infrastructure/database/db-factory';
 import { Volunteer } from '../../domain/entities/volunteer.entity';
+import { IVolunteerService } from '../interfaces/services.interface';
+import { IVolunteerRepository } from '../interfaces/volunteer-repository.interface';
+import { NotFoundException } from '../../shared/exceptions';
+import { logger } from '../../shared/logger';
 
 /**
  * Service managing volunteer profiles, shift check-ins, check-outs, and task allocations.
  */
-export class VolunteerService {
+export class VolunteerService implements IVolunteerService {
+  private volunteerRepository?: IVolunteerRepository;
+
+  constructor(volunteerRepository?: IVolunteerRepository) {
+    this.volunteerRepository = volunteerRepository;
+  }
+
+  private get volunteerRepo(): IVolunteerRepository {
+    return this.volunteerRepository || dbFactoryInstance.getRepositories().volunteerRepository;
+  }
+
   /**
    * Registers a new volunteer roster profile in the system.
    *
@@ -13,7 +27,7 @@ export class VolunteerService {
    * @returns The registered Volunteer domain entity.
    */
   public async registerVolunteer(name: string, userId: string | null = null): Promise<Volunteer> {
-    const repos = dbFactoryInstance.getRepositories();
+    logger.info(`Registering volunteer profile: "${name}"`);
     const id = `vol-${Date.now()}`;
     const newVol = new Volunteer(
       id,
@@ -27,7 +41,9 @@ export class VolunteerService {
       null
     );
 
-    return repos.volunteerRepository.save(newVol);
+    const saved = await this.volunteerRepo.save(newVol);
+    logger.info(`Volunteer profile created successfully with ID: ${id}`);
+    return saved;
   }
 
   /**
@@ -37,17 +53,18 @@ export class VolunteerService {
    * @param assignedSection Destination zone or gate corridor.
    * @param skills List of specific capabilities (e.g. First Aid, Translation).
    * @returns The updated Volunteer profile.
-   * @throws Error if the volunteer does not exist.
+   * @throws NotFoundException if the volunteer does not exist.
    */
   public async checkIn(
     volunteerId: string,
     assignedSection: string,
     skills: string[]
   ): Promise<Volunteer> {
-    const repos = dbFactoryInstance.getRepositories();
-    const volunteer = await repos.volunteerRepository.findById(volunteerId);
+    logger.info(`Shift check-in requested for Volunteer ID: ${volunteerId} at ${assignedSection}`);
+    const volunteer = await this.volunteerRepo.findById(volunteerId);
     if (!volunteer) {
-      throw new Error('Volunteer not found');
+      logger.warn(`Shift check-in rejected: Volunteer ID ${volunteerId} not found`);
+      throw new NotFoundException('Volunteer not found');
     }
 
     const updated = new Volunteer(
@@ -62,7 +79,9 @@ export class VolunteerService {
       null
     );
 
-    return repos.volunteerRepository.save(updated);
+    const saved = await this.volunteerRepo.save(updated);
+    logger.info(`Shift check-in completed successfully for Volunteer ID: ${volunteerId}`);
+    return saved;
   }
 
   /**
@@ -70,13 +89,14 @@ export class VolunteerService {
    *
    * @param volunteerId Targeted volunteer ID.
    * @returns The updated offline Volunteer state card.
-   * @throws Error if the volunteer does not exist.
+   * @throws NotFoundException if the volunteer does not exist.
    */
   public async checkOut(volunteerId: string): Promise<Volunteer> {
-    const repos = dbFactoryInstance.getRepositories();
-    const volunteer = await repos.volunteerRepository.findById(volunteerId);
+    logger.info(`Shift check-out requested for Volunteer ID: ${volunteerId}`);
+    const volunteer = await this.volunteerRepo.findById(volunteerId);
     if (!volunteer) {
-      throw new Error('Volunteer not found');
+      logger.warn(`Shift check-out rejected: Volunteer ID ${volunteerId} not found`);
+      throw new NotFoundException('Volunteer not found');
     }
 
     const updated = new Volunteer(
@@ -91,7 +111,9 @@ export class VolunteerService {
       new Date()
     );
 
-    return repos.volunteerRepository.save(updated);
+    const saved = await this.volunteerRepo.save(updated);
+    logger.info(`Shift check-out completed successfully for Volunteer ID: ${volunteerId}`);
+    return saved;
   }
 
   /**
@@ -101,17 +123,18 @@ export class VolunteerService {
    * @param section Destination stadium sector.
    * @param task Assigned duty description.
    * @returns The updated active Volunteer state card.
-   * @throws Error if the volunteer does not exist.
+   * @throws NotFoundException if the volunteer does not exist.
    */
   public async reallocateVolunteer(
     volunteerId: string,
     section: string,
     task: string
   ): Promise<Volunteer> {
-    const repos = dbFactoryInstance.getRepositories();
-    const volunteer = await repos.volunteerRepository.findById(volunteerId);
+    logger.info(`Reallocating Volunteer ID: ${volunteerId} to section: ${section} for task: "${task}"`);
+    const volunteer = await this.volunteerRepo.findById(volunteerId);
     if (!volunteer) {
-      throw new Error('Volunteer not found');
+      logger.warn(`Volunteer reallocation rejected: Volunteer ID ${volunteerId} not found`);
+      throw new NotFoundException('Volunteer not found');
     }
 
     const updated = new Volunteer(
@@ -126,7 +149,9 @@ export class VolunteerService {
       volunteer.checkOutTime
     );
 
-    return repos.volunteerRepository.save(updated);
+    const saved = await this.volunteerRepo.save(updated);
+    logger.info(`Volunteer ID: ${volunteerId} reallocated successfully`);
+    return saved;
   }
 
   /**
@@ -135,8 +160,8 @@ export class VolunteerService {
    * @returns List of Volunteer domain entities.
    */
   public async getVolunteers(): Promise<Volunteer[]> {
-    const repos = dbFactoryInstance.getRepositories();
-    return repos.volunteerRepository.findAll();
+    logger.info('Fetching volunteers list from repository');
+    return this.volunteerRepo.findAll();
   }
 }
 

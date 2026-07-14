@@ -1,12 +1,26 @@
 import { dbFactoryInstance } from '../../infrastructure/database/db-factory';
 import { Incident, IncidentSeverity, IncidentStatus } from '../../domain/entities/incident.entity';
 import { aiProviderInstance } from '../../infrastructure/ai/providers/ai-provider';
+import { IIncidentService } from '../interfaces/services.interface';
+import { IIncidentRepository } from '../interfaces/incident-repository.interface';
+import { NotFoundException } from '../../shared/exceptions';
+import { logger } from '../../shared/logger';
 
 /**
  * Service managing stadium safety ticket reports, timeline updates, responder assignments,
  * and AI-generated executive briefs.
  */
-export class IncidentService {
+export class IncidentService implements IIncidentService {
+  private incidentRepository?: IIncidentRepository;
+
+  constructor(incidentRepository?: IIncidentRepository) {
+    this.incidentRepository = incidentRepository;
+  }
+
+  private get incidentRepo(): IIncidentRepository {
+    return this.incidentRepository || dbFactoryInstance.getRepositories().incidentRepository;
+  }
+
   /**
    * Files a new stadium incident ticket and stages the initial reported timeline entry.
    *
@@ -20,7 +34,7 @@ export class IncidentService {
     location: string;
     reportedBy: string;
   }): Promise<Incident> {
-    const repos = dbFactoryInstance.getRepositories();
+    logger.info(`Filing new incident ticket: "${payload.title}" [Severity: ${payload.severity}] at ${payload.location}`);
     const incidentId = `inc-${Date.now()}`;
     const timelineEntry = {
       status: 'Reported' as IncidentStatus,
@@ -43,7 +57,9 @@ export class IncidentService {
       new Date()
     );
 
-    return repos.incidentRepository.save(newIncident);
+    const saved = await this.incidentRepo.save(newIncident);
+    logger.info(`Incident ticket successfully registered with ID: ${incidentId}`);
+    return saved;
   }
 
   /**
@@ -52,8 +68,8 @@ export class IncidentService {
    * @returns List of Incident domain entities.
    */
   public async getIncidents(): Promise<Incident[]> {
-    const repos = dbFactoryInstance.getRepositories();
-    return repos.incidentRepository.findAll();
+    logger.info('Fetching incidents lists from repository');
+    return this.incidentRepo.findAll();
   }
 
   /**
@@ -64,7 +80,7 @@ export class IncidentService {
    * @param comment Audit detail text.
    * @param updatedBy Author of the status change.
    * @returns The updated Incident state.
-   * @throws Error if the incident is not found.
+   * @throws NotFoundException if the incident is not found.
    */
   public async updateIncidentStatus(
     incidentId: string,
@@ -72,10 +88,11 @@ export class IncidentService {
     comment: string,
     updatedBy: string
   ): Promise<Incident> {
-    const repos = dbFactoryInstance.getRepositories();
-    const incident = await repos.incidentRepository.findById(incidentId);
+    logger.info(`Request received to update Incident ID: ${incidentId} status to ${status} by ${updatedBy}`);
+    const incident = await this.incidentRepo.findById(incidentId);
     if (!incident) {
-      throw new Error('Incident not found');
+      logger.warn(`Incident status update rejected: ID ${incidentId} not found`);
+      throw new NotFoundException('Incident not found');
     }
 
     const timeline = [...incident.timeline];
@@ -100,7 +117,9 @@ export class IncidentService {
       incident.createdAt
     );
 
-    return repos.incidentRepository.save(updatedIncident);
+    const saved = await this.incidentRepo.save(updatedIncident);
+    logger.info(`Incident ID ${incidentId} timeline updated successfully`);
+    return saved;
   }
 
   /**
@@ -110,13 +129,14 @@ export class IncidentService {
    * @param staffName Name of the assigned responder.
    * @param updatedBy Author of the assignment.
    * @returns The updated Incident state.
-   * @throws Error if the incident is not found.
+   * @throws NotFoundException if the incident is not found.
    */
   public async assignStaff(incidentId: string, staffName: string, updatedBy: string): Promise<Incident> {
-    const repos = dbFactoryInstance.getRepositories();
-    const incident = await repos.incidentRepository.findById(incidentId);
+    logger.info(`Assigning staff: ${staffName} to Incident ID: ${incidentId} by ${updatedBy}`);
+    const incident = await this.incidentRepo.findById(incidentId);
     if (!incident) {
-      throw new Error('Incident not found');
+      logger.warn(`Incident staff assignment rejected: ID ${incidentId} not found`);
+      throw new NotFoundException('Incident not found');
     }
 
     const timeline = [...incident.timeline];
@@ -141,7 +161,9 @@ export class IncidentService {
       incident.createdAt
     );
 
-    return repos.incidentRepository.save(updatedIncident);
+    const saved = await this.incidentRepo.save(updatedIncident);
+    logger.info(`Staff ${staffName} successfully assigned to Incident ID ${incidentId}`);
+    return saved;
   }
 
   /**
@@ -149,20 +171,51 @@ export class IncidentService {
    *
    * @param incidentId Target incident identifier.
    * @returns The updated Incident containing the executive brief summary.
-   * @throws Error if the incident is not found.
+   * @throws NotFoundException if the incident is not found.
    */
   public async generateAiSummary(incidentId: string): Promise<Incident> {
-    const repos = dbFactoryInstance.getRepositories();
-    const incident = await repos.incidentRepository.findById(incidentId);
+    logger.info(`Request received to generate AI Executive summary for Incident ID: ${incidentId}`);
+    const incident = await this.incidentRepo.findById(incidentId);
     if (!incident) {
-      throw new Error('Incident not found');
+      logger.warn(`AI incident summarization rejected: ID ${incidentId} not found`);
+      throw new NotFoundException('Incident not found');
     }
 
-    const timelineString = incident.timeline
+    const timelineString = this.formatTimelineLogs(incident.timeline);
+    const prompt = this.constructBriefingPrompt(incident, timelineString);
+
+    logger.info(`Triggering GenAI summary API context for Incident ID ${incidentId}`);
+    const aiRes = await aiProviderInstance.generateText(prompt, 'You generate corporate incident briefs.');
+    
+    const updatedIncident = new Incident(
+      incident.id,
+      incident.title,
+      incident.description,
+      incident.severity,
+      incident.status,
+      incident.location,
+      incident.reportedBy,
+      incident.assignedStaff,
+      aiRes.text,
+      incident.timeline,
+      incident.createdAt
+    );
+
+    const saved = await this.incidentRepo.save(updatedIncident);
+    logger.info(`AI summary successfully compiled and persisted for Incident ID ${incidentId}`);
+    return saved;
+  }
+
+  // --- Private Helpers to Reduce Function Length & Complexity ---
+
+  private formatTimelineLogs(timeline: Array<{ timestamp: string; status: IncidentStatus; updatedBy: string; comment: string }>): string {
+    return timeline
       .map(t => `[${t.timestamp}] Status: ${t.status} | By: ${t.updatedBy} | Details: ${t.comment}`)
       .join('\n');
+  }
 
-    const prompt = `
+  private constructBriefingPrompt(incident: Incident, timelineString: string): string {
+    return `
       You are an Incident Report Agent.
       Please write a professional, corporate summary of the following stadium safety ticket.
       
@@ -182,24 +235,6 @@ export class IncidentService {
       - Root Cause Analysis
       - Operational Resolution Details
     `;
-
-    const aiRes = await aiProviderInstance.generateText(prompt, 'You generate corporate incident briefs.');
-    
-    const updatedIncident = new Incident(
-      incident.id,
-      incident.title,
-      incident.description,
-      incident.severity,
-      incident.status,
-      incident.location,
-      incident.reportedBy,
-      incident.assignedStaff,
-      aiRes.text,
-      incident.timeline,
-      incident.createdAt
-    );
-
-    return repos.incidentRepository.save(updatedIncident);
   }
 }
 
