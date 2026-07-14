@@ -2,12 +2,28 @@ import { dbFactoryInstance } from '../../infrastructure/database/db-factory';
 import { Gate, GateStatus } from '../../domain/entities/gate.entity';
 import { Telemetry } from '../../domain/entities/telemetry.entity';
 
+/**
+ * Service managing stadium operations, gate statuses, and real-time environmental telemetry metrics.
+ */
 export class StadiumService {
+  /**
+   * Retrieves all entry gates configuration and statuses.
+   *
+   * @returns List of Gate domain entities.
+   */
   public async getGates(): Promise<Gate[]> {
     const repos = dbFactoryInstance.getRepositories();
     return repos.gateRepository.findAll();
   }
 
+  /**
+   * Updates an entry gate's status (Open, Closed, Congested, Maintenance).
+   *
+   * @param gateId Targeted gate identifier.
+   * @param status Next status state.
+   * @returns The updated Gate domain entity.
+   * @throws Error if the gate does not exist.
+   */
   public async updateGateStatus(gateId: string, status: GateStatus): Promise<Gate> {
     const repos = dbFactoryInstance.getRepositories();
     const gate = await repos.gateRepository.findById(gateId);
@@ -28,6 +44,13 @@ export class StadiumService {
     return repos.gateRepository.save(updatedGate);
   }
 
+  /**
+   * Updates dynamic turnstile flow and occupancy parameters recorded by IoT sensors.
+   *
+   * @param gateId Target gate identifier.
+   * @param payload Live turnstile flow rate, spectator occupancy, and absolute limits.
+   * @returns Resolves with the mutated Gate domain entity.
+   */
   public async updateGateTelemetry(
     gateId: string,
     payload: { turnstileFlowRate: number; currentOccupancy: number; capacityLimit: number }
@@ -60,17 +83,31 @@ export class StadiumService {
     return updatedGate;
   }
 
+  /**
+   * Fetches the latest computed stadium telemetry aggregate status.
+   *
+   * @returns Latest Telemetry card, or null if none recorded.
+   */
   public async getTelemetry(): Promise<Telemetry | null> {
     const repos = dbFactoryInstance.getRepositories();
     return repos.telemetryRepository.getLatest();
   }
 
+  /**
+   * Retrieves historical telemetry logs to chart operations trends.
+   *
+   * @returns List of Telemetry logs.
+   */
   public async getTelemetryHistory(): Promise<Telemetry[]> {
     const repos = dbFactoryInstance.getRepositories();
     return repos.telemetryRepository.getHistory(30);
   }
 
-  // Aggregate current gate loads to recalculate core stadium occupancy and safety indexes
+  /**
+   * Recalculates total stadium occupancy, queue wait times, CO2 volumes, power load, and green rating indexes.
+   *
+   * @returns The newly updated Telemetry aggregates log.
+   */
   public async recalculateTelemetryMetrics(): Promise<Telemetry> {
     const repos = dbFactoryInstance.getRepositories();
     const gates = await repos.gateRepository.findAll();

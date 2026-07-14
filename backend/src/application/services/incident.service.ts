@@ -2,7 +2,17 @@ import { dbFactoryInstance } from '../../infrastructure/database/db-factory';
 import { Incident, IncidentSeverity, IncidentStatus } from '../../domain/entities/incident.entity';
 import { aiProviderInstance } from '../../infrastructure/ai/providers/ai-provider';
 
+/**
+ * Service managing stadium safety ticket reports, timeline updates, responder assignments,
+ * and AI-generated executive briefs.
+ */
 export class IncidentService {
+  /**
+   * Files a new stadium incident ticket and stages the initial reported timeline entry.
+   *
+   * @param payload Title, description, severity level, location, and reporter name.
+   * @returns The newly created Incident domain entity.
+   */
   public async fileIncident(payload: {
     title: string;
     description: string;
@@ -36,11 +46,26 @@ export class IncidentService {
     return repos.incidentRepository.save(newIncident);
   }
 
+  /**
+   * Fetches all registered incidents logs.
+   *
+   * @returns List of Incident domain entities.
+   */
   public async getIncidents(): Promise<Incident[]> {
     const repos = dbFactoryInstance.getRepositories();
     return repos.incidentRepository.findAll();
   }
 
+  /**
+   * Appends a status comment update to the incident's timeline.
+   *
+   * @param incidentId Target incident identifier.
+   * @param status Next incident status state.
+   * @param comment Audit detail text.
+   * @param updatedBy Author of the status change.
+   * @returns The updated Incident state.
+   * @throws Error if the incident is not found.
+   */
   public async updateIncidentStatus(
     incidentId: string,
     status: IncidentStatus,
@@ -78,6 +103,15 @@ export class IncidentService {
     return repos.incidentRepository.save(updatedIncident);
   }
 
+  /**
+   * Assigns an operational safety staff member or responder to the ticket.
+   *
+   * @param incidentId Target incident identifier.
+   * @param staffName Name of the assigned responder.
+   * @param updatedBy Author of the assignment.
+   * @returns The updated Incident state.
+   * @throws Error if the incident is not found.
+   */
   public async assignStaff(incidentId: string, staffName: string, updatedBy: string): Promise<Incident> {
     const repos = dbFactoryInstance.getRepositories();
     const incident = await repos.incidentRepository.findById(incidentId);
@@ -110,7 +144,13 @@ export class IncidentService {
     return repos.incidentRepository.save(updatedIncident);
   }
 
-  // Uses GenAI to summarize incident timeline into a standard corporate briefing
+  /**
+   * Generates a professional AI summary of the incident details and historical timeline.
+   *
+   * @param incidentId Target incident identifier.
+   * @returns The updated Incident containing the executive brief summary.
+   * @throws Error if the incident is not found.
+   */
   public async generateAiSummary(incidentId: string): Promise<Incident> {
     const repos = dbFactoryInstance.getRepositories();
     const incident = await repos.incidentRepository.findById(incidentId);

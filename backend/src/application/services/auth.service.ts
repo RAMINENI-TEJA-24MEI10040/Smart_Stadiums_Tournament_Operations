@@ -3,6 +3,9 @@ import * as jwt from 'jsonwebtoken';
 import { dbFactoryInstance } from '../../infrastructure/database/db-factory';
 import { User, UserRole } from '../../domain/entities/user.entity';
 
+/**
+ * Service managing user registration, authentication, and security token signatures.
+ */
 export class AuthService {
   private jwtSecret: string;
   private tokenExpiry: string = '24h';
@@ -11,6 +14,12 @@ export class AuthService {
     this.jwtSecret = process.env.JWT_SECRET || 'stadium-secret-key-999';
   }
 
+  /**
+   * Registers a new stadium user inside the database, hashing their password.
+   *
+   * @param payload Username, cleartext password, access role, name, and email.
+   * @returns Resolves with the newly created User domain entity.
+   */
   public async register(payload: {
     username: string;
     passwordPlain: string;
@@ -42,6 +51,13 @@ export class AuthService {
     return repos.userRepository.save(user);
   }
 
+  /**
+   * Logs in a user by comparing their password hashes and signs a secure JWT token.
+   *
+   * @param username Targeted username credential.
+   * @param passwordPlain Cleartext password.
+   * @returns Signed JWT token and user details payload.
+   */
   public async login(username: string, passwordPlain: string): Promise<{ token: string; user: any }> {
     const repos = dbFactoryInstance.getRepositories();
     const user = await repos.userRepository.findByUsername(username);
@@ -66,6 +82,12 @@ export class AuthService {
     };
   }
 
+  /**
+   * Retrieves a user's profile detail card based on their database identifier.
+   *
+   * @param id Target user identifier.
+   * @returns User details JSON payload.
+   */
   public async getUserProfile(id: string): Promise<any> {
     const repos = dbFactoryInstance.getRepositories();
     const user = await repos.userRepository.findById(id);

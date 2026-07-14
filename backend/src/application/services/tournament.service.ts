@@ -1,7 +1,19 @@
 import { dbFactoryInstance } from '../../infrastructure/database/db-factory';
 import { Match, MatchStatus } from '../../domain/entities/match.entity';
 
+/**
+ * Service orchestrating tournament match scheduling, venue conflict validations,
+ * and real-time status changes.
+ */
 export class TournamentService {
+  /**
+   * Schedules a new tournament match.
+   * Performs strict venue double-booking validation to ensure no overlapping match schedules.
+   *
+   * @param payload Home team, away team, time bounds, venue, and assigned referee.
+   * @returns The scheduled Match domain entity.
+   * @throws Error if another match conflicts with the venue and time block.
+   */
   public async scheduleMatch(payload: {
     homeTeam: string;
     awayTeam: string;
@@ -45,11 +57,24 @@ export class TournamentService {
     return repos.matchRepository.save(newMatch);
   }
 
+  /**
+   * Fetches all scheduled match calendars recorded in the active database.
+   *
+   * @returns List of Match domain entities.
+   */
   public async getMatches(): Promise<Match[]> {
     const repos = dbFactoryInstance.getRepositories();
     return repos.matchRepository.findAll();
   }
 
+  /**
+   * Updates the match operational status (e.g. Live, Completed, Delayed) and appends safety log comments.
+   *
+   * @param matchId Target match identifier.
+   * @param status Target match status state.
+   * @param safetyMessage Optional safety notification text to log.
+   * @returns The updated Match domain entity state.
+   */
   public async updateMatchStatus(matchId: string, status: MatchStatus, safetyMessage?: string): Promise<Match> {
     const repos = dbFactoryInstance.getRepositories();
     const match = await repos.matchRepository.findById(matchId);
