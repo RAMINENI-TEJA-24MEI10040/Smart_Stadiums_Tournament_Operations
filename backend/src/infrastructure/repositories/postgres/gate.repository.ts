@@ -32,15 +32,16 @@ export class PostgresGateRepository implements IGateRepository {
     return gate;
   }
 
-  private mapToEntity(row: any): Gate {
+  private mapToEntity(rawRow: unknown) {
+    const row = rawRow as Record<string, unknown>;
     return new Gate(
-      row.id,
-      row.name,
-      row.turnstile_flow_rate,
-      row.current_occupancy,
-      row.capacity_limit,
-      row.status as GateStatus,
-      new Date(row.last_updated)
+      String(row['id']),
+      String(row['name']),
+      Number(row['turnstile_flow_rate']),
+      Number(row['current_occupancy']),
+      Number(row['capacity_limit']),
+      String(row['status']) as GateStatus,
+      new Date(row['last_updated'] as string)
     );
   }
 }

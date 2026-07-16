@@ -1,31 +1,31 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
-// Load environment variables from .env
+// Load environment variables before any other imports
 dotenv.config({ path: path.join(__dirname, '..', '..', '.env') });
 
 import app from './app';
 import { dbFactoryInstance } from './infrastructure/database/db-factory';
+import { logger } from './shared/logger';
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT ?? 5000;
 
-async function bootstrap() {
+async function bootstrap(): Promise<void> {
   try {
-    console.log('Initializing database engines...');
+    logger.info('Initializing database engines...');
     await dbFactoryInstance.initialize();
 
     const server = app.listen(PORT, () => {
-      console.log(`====================================================`);
-      console.log(`STADIUM OPS SERVER IS ALIVE ON PORT: ${PORT}`);
-      console.log(`DB PROVIDER CONFIG: ${process.env.DB_PROVIDER || 'local JSON fallback'}`);
-      console.log(`====================================================`);
+      logger.info(`Stadium Ops API server started on port ${PORT}`, {
+        port: PORT,
+        dbProvider: process.env.DB_PROVIDER ?? 'json'
+      });
     });
 
-    // Graceful Shutdown hooks
-    const shutdown = async () => {
-      console.log('Shutdown signal received. Shutting down server gracefully...');
+    const shutdown = async (): Promise<void> => {
+      logger.info('Shutdown signal received — closing server gracefully...');
       server.close(() => {
-        console.log('HTTP Server closed.');
+        logger.info('HTTP server closed successfully.');
         process.exit(0);
       });
     };
@@ -34,19 +34,18 @@ async function bootstrap() {
     process.on('SIGINT', shutdown);
 
   } catch (err) {
-    console.error('Fatal bootstrapping error, server aborted:', err);
+    logger.error('Fatal bootstrapping error — server aborted.', err instanceof Error ? err : new Error(String(err)));
     process.exit(1);
   }
 }
 
-// Uncaught system crash protections
-process.on('uncaughtException', (err) => {
-  console.error('[UNCAUGHT EXCEPTION CRITICAL] Server stopping:', err.message, err.stack);
+process.on('uncaughtException', (err: Error) => {
+  logger.error('UNCAUGHT EXCEPTION — server stopping.', err);
   process.exit(1);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[UNHANDLED REJECTION CRITICAL] Promise rejection at:', promise, 'reason:', reason);
+process.on('unhandledRejection', (reason: unknown) => {
+  logger.error('UNHANDLED PROMISE REJECTION detected.', reason instanceof Error ? reason : new Error(String(reason)));
 });
 
 bootstrap();

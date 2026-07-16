@@ -1,10 +1,15 @@
-import { IAIProvider, aiProviderInstance } from '../providers/ai-provider';
+import { IAIProvider, AIResponse, aiProviderInstance } from '../providers/ai-provider';
 import { PromptTemplates } from '../prompts/prompt-templates';
 import { ragEngineInstance, RagEngine } from '../rag/rag-engine';
+import { McpContext } from '../orchestrator/agent-orchestrator';
 
+/**
+ * Abstract base class for all specialized AI agents.
+ * Provides constructor-injected AI provider and RAG engine dependencies.
+ */
 export abstract class BaseAgent {
-  protected provider: IAIProvider;
-  protected rag: RagEngine;
+  protected readonly provider: IAIProvider;
+  protected readonly rag: RagEngine;
 
   constructor(
     provider: IAIProvider = aiProviderInstance,
@@ -14,11 +19,13 @@ export abstract class BaseAgent {
     this.rag = rag;
   }
 
-  public abstract run(query: string, mcpContext: any): Promise<any>;
+  /** Executes the agent's specialized analysis pipeline. */
+  public abstract run(query: string, mcpContext: McpContext): Promise<AIResponse>;
 }
 
+/** Analyzes turnstile flows, identifies bottlenecks, and calculates congestion risk. */
 export class CrowdIntelligenceAgent extends BaseAgent {
-  public async run(query: string, mcpContext: any): Promise<any> {
+  public async run(query: string, mcpContext: McpContext): Promise<AIResponse> {
     const systemPrompt = PromptTemplates.getPrompt('Crowd');
     const docs = this.rag.search(query, 2);
     const compressedDocs = this.rag.compressContext(docs);
@@ -42,8 +49,9 @@ export class CrowdIntelligenceAgent extends BaseAgent {
   }
 }
 
+/** Plans evacuation routes and emergency response deployment orders. */
 export class EmergencyResponseAgent extends BaseAgent {
-  public async run(query: string, mcpContext: any): Promise<any> {
+  public async run(query: string, mcpContext: McpContext): Promise<AIResponse> {
     const systemPrompt = PromptTemplates.getPrompt('Emergency');
     const docs = this.rag.search(query, 3);
     const compressedDocs = this.rag.compressContext(docs);
@@ -67,8 +75,9 @@ export class EmergencyResponseAgent extends BaseAgent {
   }
 }
 
+/** Optimizes volunteer roster assignments based on skills and location gaps. */
 export class VolunteerCoordinatorAgent extends BaseAgent {
-  public async run(query: string, mcpContext: any): Promise<any> {
+  public async run(query: string, mcpContext: McpContext): Promise<AIResponse> {
     const systemPrompt = PromptTemplates.getPrompt('Volunteer');
     const docs = this.rag.search(query, 2);
     const compressedDocs = this.rag.compressContext(docs);
@@ -92,8 +101,9 @@ export class VolunteerCoordinatorAgent extends BaseAgent {
   }
 }
 
+/** Evaluates power, water, and carbon metrics to recommend sustainability actions. */
 export class SustainabilityAgent extends BaseAgent {
-  public async run(query: string, mcpContext: any): Promise<any> {
+  public async run(query: string, mcpContext: McpContext): Promise<AIResponse> {
     const systemPrompt = PromptTemplates.getPrompt('Sustainability');
     const docs = this.rag.search(query, 2);
     const compressedDocs = this.rag.compressContext(docs);
@@ -114,8 +124,9 @@ export class SustainabilityAgent extends BaseAgent {
   }
 }
 
+/** Provides voice-first layout directions and wheelchair accessibility routing. */
 export class AccessibilityAgent extends BaseAgent {
-  public async run(query: string, mcpContext: any): Promise<any> {
+  public async run(query: string, mcpContext: McpContext): Promise<AIResponse> {
     const systemPrompt = PromptTemplates.getPrompt('Accessibility');
     const docs = this.rag.search(query, 2);
     const compressedDocs = this.rag.compressContext(docs);
@@ -136,8 +147,9 @@ export class AccessibilityAgent extends BaseAgent {
   }
 }
 
+/** Calculates parking lot capacities and advises shuttle re-routing. */
 export class TransportationAgent extends BaseAgent {
-  public async run(query: string, _mcpContext: any): Promise<any> {
+  public async run(query: string, _mcpContext: McpContext): Promise<AIResponse> {
     const systemPrompt = PromptTemplates.getPrompt('Transportation');
     const docs = this.rag.search(query, 2);
     const compressedDocs = this.rag.compressContext(docs);
@@ -155,8 +167,9 @@ export class TransportationAgent extends BaseAgent {
   }
 }
 
+/** Generates structured operational briefings from telemetry history. */
 export class AnalyticsAgent extends BaseAgent {
-  public async run(query: string, mcpContext: any): Promise<any> {
+  public async run(query: string, mcpContext: McpContext): Promise<AIResponse> {
     const systemPrompt = PromptTemplates.getPrompt('Analytics');
     const userPrompt = `
       USER QUERY: ${query}
@@ -171,8 +184,9 @@ export class AnalyticsAgent extends BaseAgent {
   }
 }
 
+/** General-purpose operations copilot for tournament and facility queries. */
 export class OperationsCopilot extends BaseAgent {
-  public async run(query: string, mcpContext: any): Promise<any> {
+  public async run(query: string, mcpContext: McpContext): Promise<AIResponse> {
     const systemPrompt = PromptTemplates.getPrompt('General');
     const docs = this.rag.search(query, 2);
     const compressedDocs = this.rag.compressContext(docs);

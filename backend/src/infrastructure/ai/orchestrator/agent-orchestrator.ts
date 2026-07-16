@@ -14,11 +14,28 @@ import {
   BaseAgent
 } from '../agents/specialized-agents';
 
+/** Typed tool suggestion extracted from AI response text. */
+export interface SuggestedTool {
+  name: string;
+  params: Record<string, unknown>;
+}
+
+/** Typed MCP context snapshot gathered from live database state. */
+export interface McpContext {
+  gates: Record<string, unknown>[];
+  matches: Record<string, unknown>[];
+  incidents: Record<string, unknown>[];
+  volunteers: Record<string, unknown>[];
+  telemetry: Record<string, unknown> | null;
+  telemetryHistory: Record<string, unknown>[];
+}
+
+/** Result shape returned by the AI orchestration pipeline. */
 export interface OrchestrationResult {
   agentName: string;
   responseText: string;
   confidenceScore: number;
-  suggestedTools: any[];
+  suggestedTools: SuggestedTool[];
   metrics: {
     latencyMs: number;
     tokens: number;
@@ -27,20 +44,40 @@ export interface OrchestrationResult {
   warnings?: string;
 }
 
-export class AgentOrchestrator {
-  private crowdAgent = new CrowdIntelligenceAgent();
-  private emergencyAgent = new EmergencyResponseAgent();
-  private volunteerAgent = new VolunteerCoordinatorAgent();
-  private sustainabilityAgent = new SustainabilityAgent();
-  private accessibilityAgent = new AccessibilityAgent();
-  private transportationAgent = new TransportationAgent();
-  private analyticsAgent = new AnalyticsAgent();
-  private copilotAgent = new OperationsCopilot();
+/** Default session identifier when none is provided by caller. */
+const DEFAULT_SESSION_ID = 'default-session';
 
-  // Primary entry orchestrator workflow
+/** Telemetry history retrieval limit. */
+const TELEMETRY_HISTORY_LIMIT = 10;
+
+/** Hallucination confidence threshold below which outputs are flagged. */
+const HALLUCINATION_THRESHOLD = 0.9;
+
+/**
+ * Central AI orchestration engine.
+ * Routes user prompts through a multi-stage pipeline:
+ * Guardrails → Memory → Intent Classification → Agent Execution → Output Validation → Tool Extraction.
+ */
+export class AgentOrchestrator {
+  private readonly crowdAgent = new CrowdIntelligenceAgent();
+  private readonly emergencyAgent = new EmergencyResponseAgent();
+  private readonly volunteerAgent = new VolunteerCoordinatorAgent();
+  private readonly sustainabilityAgent = new SustainabilityAgent();
+  private readonly accessibilityAgent = new AccessibilityAgent();
+  private readonly transportationAgent = new TransportationAgent();
+  private readonly analyticsAgent = new AnalyticsAgent();
+  private readonly copilotAgent = new OperationsCopilot();
+
+  /**
+   * Primary orchestration entry point.
+   * Executes the full 10-stage AI pipeline for a single user query.
+   *
+   * @param query The user's natural language prompt
+   * @param sessionId Conversation session identifier for memory continuity
+   */
   public async orchestrate(
     query: string,
-    sessionId: string = 'default-session'
+    sessionId: string = DEFAULT_SESSION_ID
   ): Promise<OrchestrationResult> {
     const startTime = Date.now();
 
@@ -92,7 +129,7 @@ export class AgentOrchestrator {
     // 7. Guardrail Output Validation (Hallucination scan & verification)
     const validation = AiGuardrails.validateOutput(responseText, mcpContext);
     const confidenceScore = AiGuardrails.calculateConfidenceScore(sanitizedQuery, responseText);
-    const hallucinationFlagged = !validation.passed || (validation.confidenceScore !== undefined && validation.confidenceScore < 0.9);
+    const hallucinationFlagged = !validation.passed || (validation.confidenceScore !== undefined && validation.confidenceScore < HALLUCINATION_THRESHOLD);
 
     // 8. Log Metrics in AI Evaluator
     AiEvaluator.logMetric(
@@ -125,6 +162,9 @@ export class AgentOrchestrator {
     };
   }
 
+  /**
+   * Routes the user query to the appropriate specialized agent based on keyword intent matching.
+   */
   private classifyIntent(query: string): string {
     const q = query.toLowerCase();
     if (q.includes('evacuate') || q.includes('fire') || q.includes('incident') || q.includes('medical') || q.includes('security') || q.includes('alert')) {
@@ -151,6 +191,7 @@ export class AgentOrchestrator {
     return 'General';
   }
 
+  /** Resolves the agent instance for a given intent classification type. */
   private resolveAgent(type: string): BaseAgent {
     switch (type) {
       case 'Crowd': return this.crowdAgent;
@@ -164,7 +205,8 @@ export class AgentOrchestrator {
     }
   }
 
-  private async gatherMcpContext(): Promise<any> {
+  /** Gathers live database context for MCP-aware prompt augmentation. */
+  private async gatherMcpContext(): Promise<McpContext> {
     const repos = dbFactoryInstance.getRepositories();
     const [gates, matches, incidents, volunteers, telemetry, telemetryHistory] = await Promise.all([
       repos.gateRepository.findAll(),
@@ -172,7 +214,7 @@ export class AgentOrchestrator {
       repos.incidentRepository.findAll(),
       repos.volunteerRepository.findAll(),
       repos.telemetryRepository.getLatest(),
-      repos.telemetryRepository.getHistory(10)
+      repos.telemetryRepository.getHistory(TELEMETRY_HISTORY_LIMIT)
     ]);
 
     return {
@@ -185,11 +227,11 @@ export class AgentOrchestrator {
     };
   }
 
-  private extractSuggestedTools(text: string): any[] {
-    const tools: any[] = [];
+  /** Parses AI response text for actionable tool suggestions. */
+  private extractSuggestedTools(text: string): SuggestedTool[] {
+    const tools: SuggestedTool[] = [];
     const lower = text.toLowerCase();
 
-    // Check for Gate commands: e.g. "open North Gate 1"
     if (lower.includes('open') && lower.includes('gate')) {
       if (lower.includes('gate-1') || lower.includes('north gate 1')) {
         tools.push({ name: 'updateGateStatus', params: { gateId: 'gate-1', status: 'Open' } });
@@ -205,19 +247,17 @@ export class AgentOrchestrator {
       }
     }
 
-    // Check for Volunteer allocations: e.g. "reallocate Mark to Gate 3"
     if (lower.includes('reallocate') || lower.includes('assign')) {
       tools.push({
         name: 'reallocateVolunteer',
         params: {
-          volunteerId: 'vol-3', // Sample default matching mock data
+          volunteerId: 'vol-3',
           section: 'Gate 3 Egress Corridor',
           task: 'Crowd load redirection guidance'
         }
       });
     }
 
-    // Check for Emergency Reports
     if (lower.includes('file incident') || lower.includes('report incident') || lower.includes('emergency at')) {
       tools.push({
         name: 'fileIncident',
@@ -233,10 +273,11 @@ export class AgentOrchestrator {
     return tools;
   }
 
+  /** Builds a blocked response when security guardrails reject the prompt. */
   private generateSecurityBlockedResult(
     agentName: string,
     reason: string,
-    startTime: Date | number
+    startTime: number
   ): OrchestrationResult {
     return {
       agentName,
@@ -248,7 +289,7 @@ export class AgentOrchestrator {
       confidenceScore: 0.0,
       suggestedTools: [],
       metrics: {
-        latencyMs: Date.now() - Number(startTime),
+        latencyMs: Date.now() - startTime,
         tokens: 0,
         costUSD: 0
       }

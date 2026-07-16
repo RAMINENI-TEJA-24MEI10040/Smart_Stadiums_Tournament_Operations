@@ -1,3 +1,5 @@
+import { McpContext } from '../orchestrator/agent-orchestrator';
+
 export interface GuardrailCheckResult {
   passed: boolean;
   sanitizedInput?: string;
@@ -62,23 +64,22 @@ export class AiGuardrails {
     return { passed: true };
   }
 
-  // Hallucination Verification: Checks if AI suggestions contradict database reality
-  // For example, if AI states "Gate 5 is congested", we verify if Gate 5 actually exists and is open.
-  public static validateOutput(aiText: string, currentDatabaseState: any): GuardrailCheckResult {
+  /** Hallucination Verification: Checks if AI suggestions contradict live database state. */
+  public static validateOutput(aiText: string, currentDatabaseState: McpContext): GuardrailCheckResult {
     const lowerText = aiText.toLowerCase();
 
-    // If AI mentions gate congestion, let's cross-verify database gates
+    // If AI mentions gate congestion, cross-verify database gates
     if (currentDatabaseState && currentDatabaseState.gates) {
       for (const gate of currentDatabaseState.gates) {
-        const name = gate.name.toLowerCase();
-        const status = gate.status.toLowerCase();
+        const name = String(gate['name'] ?? '').toLowerCase();
+        const status = String(gate['status'] ?? '').toLowerCase();
 
         // If the AI recommends opening a gate that is already open, warn or adjust
         if (lowerText.includes(`open ${name}`) && status === 'open') {
           return {
-            passed: true, // We allow it but lower confidence or flag warning
+            passed: true,
             confidenceScore: 0.85,
-            reason: `AI suggested opening ${gate.name}, which is already open.`
+            reason: `AI suggested opening ${gate['name']}, which is already open.`
           };
         }
       }

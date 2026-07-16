@@ -67,3 +67,7 @@ export const aiQuerySchema = z.object({
   query: z.string().min(2),
   sessionId: z.string().optional()
 });
+
+export const registerVolunteerSchema = z.object({
+  name: z.string().min(1)
+});

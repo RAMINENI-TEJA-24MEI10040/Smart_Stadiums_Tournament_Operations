@@ -11,17 +11,17 @@ router.post(
   authenticate,
   authorize(['OpsManager', 'Director']),
   validateBody(createMatchSchema),
-  matchControllerInstance.schedule
+  (req, res, next) => matchControllerInstance.schedule(req, res, next)
 );
 
-router.get('/', matchControllerInstance.getMatches);
+router.get('/', authenticate, (req, res, next) => matchControllerInstance.getMatches(req, res, next));
 
 router.patch(
   '/:id/status',
   authenticate,
   authorize(['OpsManager', 'Director']),
   validateBody(updateMatchStatusSchema),
-  matchControllerInstance.updateStatus
+  (req, res, next) => matchControllerInstance.updateStatus(req, res, next)
 );
 
 export default router;

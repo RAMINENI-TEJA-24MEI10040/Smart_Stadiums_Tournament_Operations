@@ -1,21 +1,102 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-interface Schema {
-  users: any[];
-  matches: any[];
-  gates: any[];
-  incidents: any[];
-  volunteers: any[];
-  telemetry: any[];
+export interface JsonUser {
+  id: string;
+  username: string;
+  passwordHash: string;
+  role: string;
+  name: string;
+  email: string;
+  createdAt: string;
+}
+
+export interface JsonMatch {
+  id: string;
+  homeTeam: string;
+  awayTeam: string;
+  startTime: string;
+  endTime: string;
+  status: string;
+  venue: string;
+  referee: string;
+  safetyLog: string[];
+  createdAt: string;
+}
+
+export interface JsonGate {
+  id: string;
+  name: string;
+  turnstileFlowRate: number;
+  currentOccupancy: number;
+  capacityLimit: number;
+  status: string;
+  lastUpdated: string;
+}
+
+export interface JsonIncidentTimelineEntry {
+  status: string;
+  comment: string;
+  timestamp: string;
+  updatedBy: string;
+}
+
+export interface JsonIncident {
+  id: string;
+  title: string;
+  description: string;
+  severity: string;
+  status: string;
+  location: string;
+  reportedBy: string;
+  assignedStaff: string | null;
+  aiSummary: string | null;
+  timeline: JsonIncidentTimelineEntry[];
+  createdAt: string;
+}
+
+export interface JsonVolunteer {
+  id: string;
+  userId: string | null;
+  name: string;
+  assignedSection: string;
+  skills: string[];
+  status: string;
+  currentTask: string | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+}
+
+export interface JsonTelemetry {
+  stadiumId: string;
+  totalAttendance: number;
+  activeGatesCount: number;
+  congestedGatesCount: number;
+  averageQueueTime: number;
+  co2Level: number;
+  temperature: number;
+  sustainabilityScore: number;
+  powerConsumption: number;
+  waterUsage: number;
+  carbonFootprint: number;
+  timestamp: string;
+}
+
+export interface Schema {
+  users: JsonUser[];
+  matches: JsonMatch[];
+  gates: JsonGate[];
+  incidents: JsonIncident[];
+  volunteers: JsonVolunteer[];
+  telemetry: JsonTelemetry[];
 }
 
 export class JsonDatabase {
-  private filePath: string;
+  private readonly filePath: string;
   private writeLock: Promise<void> = Promise.resolve();
 
   constructor(filePath?: string) {
-    this.filePath = filePath || path.join(__dirname, '..', '..', '..', 'data.json');
+    this.filePath = filePath ?? path.join(__dirname, '..', '..', '..', 'data.json');
   }
 
   private async initializeIfNeeded(): Promise<void> {
@@ -57,7 +138,7 @@ export class JsonDatabase {
   public async read(): Promise<Schema> {
     await this.initializeIfNeeded();
     const data = await fs.readFile(this.filePath, 'utf-8');
-    return JSON.parse(data);
+    return JSON.parse(data) as Schema;
   }
 
   public async write(data: Schema): Promise<void> {

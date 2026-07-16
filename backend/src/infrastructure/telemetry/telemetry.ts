@@ -1,5 +1,5 @@
 import * as os from 'os';
-import { AiEvaluator } from '../ai/evaluators/evaluator';
+import { AiEvaluator, AiMetricsSummary } from '../ai/evaluators/evaluator';
 
 export interface SystemHealth {
   status: 'Healthy' | 'Degraded' | 'Critical';
@@ -8,7 +8,7 @@ export interface SystemHealth {
   cpuLoadPercentage: number;
   activeDbConnections: number;
   errorsLogged: number;
-  aiMetrics: any;
+  aiMetrics: AiMetricsSummary;
 }
 
 export class TelemetryProvider {

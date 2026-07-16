@@ -19,7 +19,7 @@ export class JsonIncidentRepository implements IIncidentRepository {
       incident.reportedBy,
       incident.assignedStaff,
       incident.aiSummary,
-      incident.timeline || [],
+      (incident.timeline || []).map(t => ({ ...t, status: t.status as IncidentStatus })),
       new Date(incident.createdAt)
     );
   }
@@ -37,7 +37,7 @@ export class JsonIncidentRepository implements IIncidentRepository {
         incident.reportedBy,
         incident.assignedStaff,
         incident.aiSummary,
-        incident.timeline || [],
+        (incident.timeline || []).map(t => ({ ...t, status: t.status as IncidentStatus })),
         new Date(incident.createdAt)
       )
     );

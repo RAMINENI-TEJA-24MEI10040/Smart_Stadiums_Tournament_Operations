@@ -1,13 +1,34 @@
 import { Pool, PoolClient } from 'pg';
+import { logger } from '../../shared/logger';
 
+/** Default connection string pointing to local development PostgreSQL database. */
+const DEFAULT_CONNECTION_STRING = 'postgresql://postgres:postgres@localhost:5432/stadium_ops';
+
+/** Connection pool sizing bounds. */
+const MAX_POOL_CLIENTS = 20;
+
+/** Client idle connection timeout limit (milliseconds). */
+const IDLE_TIMEOUT_MS = 30000;
+
+/** Connection request timeout limit (milliseconds). */
+const CONNECTION_TIMEOUT_MS = 2000;
+
+/**
+ * Wrapper class managing connection and query executions for PostgreSQL pool driver.
+ * Decouples table schema creation and seeding from controller route handling.
+ */
 export class PostgresDatabase {
   private pool: Pool | null = null;
-  private connectionString: string;
+  private readonly connectionString: string;
 
   constructor(connectionString?: string) {
-    this.connectionString = connectionString || process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/stadium_ops';
+    this.connectionString = connectionString ?? process.env.DATABASE_URL ?? DEFAULT_CONNECTION_STRING;
   }
 
+  /**
+   * Returns the active PostgreSQL connection pool instance.
+   * @throws Error if connection pool is not initialized
+   */
   public getPool(): Pool {
     if (!this.pool) {
       throw new Error('Postgres Pool is not initialized. Call initialize() first.');
@@ -15,36 +36,52 @@ export class PostgresDatabase {
     return this.pool;
   }
 
+  /**
+   * Configures connection parameters and seeds table metadata.
+   */
   public async initialize(): Promise<void> {
     this.pool = new Pool({
       connectionString: this.connectionString,
-      max: 20, // Connection pooling max clients
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000
+      max: MAX_POOL_CLIENTS,
+      idleTimeoutMillis: IDLE_TIMEOUT_MS,
+      connectionTimeoutMillis: CONNECTION_TIMEOUT_MS
     });
 
-    // Verify connection
     const client = await this.pool.connect();
     try {
       await this.runMigrations(client);
       await this.seedDefaultData(client);
+      logger.info('Postgres connection pool successfully initialized.');
     } finally {
       client.release();
     }
   }
 
-  public async query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+  /**
+   * Run a parametrized SQL query against the connection pool.
+   * 
+   * @param sql Parametrized query string
+   * @param params Parameter replacement values list
+   */
+  public async query<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
     const res = await this.getPool().query(sql, params);
     return res.rows as T[];
   }
 
+  /**
+   * Gracefully drains the connection pool.
+   */
   public async close(): Promise<void> {
     if (this.pool) {
       await this.pool.end();
       this.pool = null;
+      logger.info('Postgres connection pool closed.');
     }
   }
 
+  /**
+   * Bootstraps SQL tables in the connected database schema.
+   */
   private async runMigrations(client: PoolClient): Promise<void> {
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -133,6 +170,9 @@ export class PostgresDatabase {
     `);
   }
 
+  /**
+   * Appends mock seed row elements if tables are currently empty.
+   */
   private async seedDefaultData(client: PoolClient): Promise<void> {
     const checkRes = await client.query('SELECT id FROM gates LIMIT 1');
     if (checkRes.rowCount === 0) {

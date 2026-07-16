@@ -50,20 +50,21 @@ export class PostgresTelemetryRepository implements ITelemetryRepository {
     return rows.map(r => this.mapToEntity(r));
   }
 
-  private mapToEntity(row: any): Telemetry {
+  private mapToEntity(rawRow: unknown) {
+    const row = rawRow as Record<string, unknown>;
     return new Telemetry(
-      row.stadium_id,
-      row.total_attendance,
-      row.active_gates_count,
-      row.congested_gates_count,
-      Number(row.average_queue_time),
-      Number(row.co2_level),
-      Number(row.temperature),
-      Number(row.sustainability_score),
-      Number(row.power_consumption),
-      Number(row.water_usage),
-      Number(row.carbon_footprint),
-      new Date(row.timestamp)
+      String(row['stadium_id']),
+      Number(row['total_attendance']),
+      Number(row['active_gates_count']),
+      Number(row['congested_gates_count']),
+      Number(row['average_queue_time']),
+      Number(row['co2_level']),
+      Number(row['temperature']),
+      Number(row['sustainability_score']),
+      Number(row['power_consumption']),
+      Number(row['water_usage']),
+      Number(row['carbon_footprint']),
+      new Date(row['timestamp'] as string)
     );
   }
 }

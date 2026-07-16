@@ -1,44 +1,78 @@
 import initSqlJs from 'sql.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { logger } from '../../shared/logger';
 
+/** Type interface for sql.js Statement class. */
+interface SqlJsStatement {
+  bind(params: unknown[]): void;
+  step(): boolean;
+  getAsObject(): Record<string, unknown>;
+  free(): void;
+}
+
+/** Type interface for sql.js Database class. */
+interface SqlJsDatabase {
+  run(sql: string, params?: unknown[]): void;
+  exec(sql: string): Array<{ columns: string[]; values: unknown[][] }>;
+  prepare(sql: string): SqlJsStatement;
+  export(): Uint8Array;
+  close(): void;
+}
+
+/** Type interface for sql.js library static module. */
+interface SqlJsStatic {
+  Database: new (data?: Uint8Array) => SqlJsDatabase;
+}
+
+/**
+ * Wrapper client managing connection to SQLite database running in WebAssembly (sql.js).
+ * Decouples file reads/writes from query executions, enabling WASM runtime persistence.
+ */
 export class SqliteDatabase {
-  private db: any = null;
-  private dbPath: string;
-  private SQL: any = null;
+  private db: SqlJsDatabase | null = null;
+  private readonly dbPath: string;
+  private SQL: SqlJsStatic | null = null;
 
   constructor(dbPath?: string) {
-    this.dbPath = dbPath || path.join(__dirname, '..', '..', '..', 'stadium_dev.db');
+    this.dbPath = dbPath ?? path.join(__dirname, '..', '..', '..', 'stadium_dev.db');
   }
 
-  public getDb(): any {
+  /**
+   * Returns the initialized sql.js database connection instance.
+   * @throws Error if connection is not active
+   */
+  public getDb(): SqlJsDatabase {
     if (!this.db) {
       throw new Error('SQLite Database is not initialized. Call initialize() first.');
     }
     return this.db;
   }
 
+  /**
+   * Compiles the sql.js module and reads/seeds database contents.
+   */
   public async initialize(): Promise<void> {
-    // 1. Initialize WebAssembly sql.js compiler
-    this.SQL = await initSqlJs();
+    const rawSql = await initSqlJs();
+    this.SQL = rawSql as unknown as SqlJsStatic;
 
     try {
-      // 2. Load existing binary database file if present
       await fs.access(this.dbPath);
       const fileBuffer = await fs.readFile(this.dbPath);
-      this.db = new this.SQL.Database(fileBuffer);
-      console.log('Loaded existing SQLite WASM Database file from:', this.dbPath);
+      this.db = new this.SQL.Database(new Uint8Array(fileBuffer));
+      logger.info('Loaded existing SQLite WASM Database file from disk.', { path: this.dbPath });
     } catch {
-      // 3. Create fresh in-memory database and write empty seed
       this.db = new this.SQL.Database();
-      console.log('Created fresh SQLite WASM Database in memory.');
+      logger.info('Created fresh SQLite WASM Database in memory.');
       await this.runMigrations();
       await this.seedDefaultData();
       await this.persist();
     }
   }
 
-  // Atomically flush current memory database state to physical file
+  /**
+   * Atomic file flush of the in-memory SQLite database state to disk.
+   */
   private async persist(): Promise<void> {
     if (!this.db) return;
     const data = this.db.export();
@@ -46,11 +80,17 @@ export class SqliteDatabase {
     await fs.writeFile(this.dbPath, buffer);
   }
 
-  public async run(sql: string, params: any[] = []): Promise<{ lastID: number; changes: number }> {
+  /**
+   * Run a state mutating query against the database (INSERT, UPDATE, DELETE).
+   * Automatically flushes the changes to disk.
+   * 
+   * @param sql SQL statement with parameter placeholders
+   * @param params Parameter binding values list
+   */
+  public async run(sql: string, params: unknown[] = []): Promise<{ lastID: number; changes: number }> {
     const dbInstance = this.getDb();
     dbInstance.run(sql, params);
     
-    // Fetch last insert row ID
     let lastID = 0;
     try {
       const res = dbInstance.exec('SELECT last_insert_rowid() as id');
@@ -61,46 +101,59 @@ export class SqliteDatabase {
       lastID = 0;
     }
 
-    // Persist changes to disk
     await this.persist();
 
     return {
       lastID,
-      changes: 1 // Default proxy count for WebAssembly changes
+      changes: 1
     };
   }
 
-  public async get<T = any>(sql: string, params: any[] = []): Promise<T | null> {
+  /**
+   * Query a single row matching criteria.
+   * 
+   * @param sql SQL query string
+   * @param params Parameter binding values list
+   */
+  public async get<T = unknown>(sql: string, params: unknown[] = []): Promise<T | null> {
     const dbInstance = this.getDb();
     const stmt = dbInstance.prepare(sql);
     stmt.bind(params);
     
-    let row: any = null;
+    let row: Record<string, unknown> | null = null;
     if (stmt.step()) {
       row = stmt.getAsObject();
     }
     stmt.free();
 
-    // Map empty/null objects
     if (row && Object.keys(row).length === 0) {
       return null;
     }
-    return row as T;
+    return row as unknown as T;
   }
 
-  public async all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+  /**
+   * Query multiple rows matching criteria.
+   * 
+   * @param sql SQL query string
+   * @param params Parameter binding values list
+   */
+  public async all<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
     const dbInstance = this.getDb();
     const stmt = dbInstance.prepare(sql);
     stmt.bind(params);
     
-    const rows: any[] = [];
+    const rows: Record<string, unknown>[] = [];
     while (stmt.step()) {
       rows.push(stmt.getAsObject());
     }
     stmt.free();
-    return rows as T[];
+    return rows as unknown as T[];
   }
 
+  /**
+   * Flushes any pending changes and closes the database connection.
+   */
   public async close(): Promise<void> {
     if (this.db) {
       await this.persist();
@@ -109,6 +162,9 @@ export class SqliteDatabase {
     }
   }
 
+  /**
+   * Applies schema migrations to bootstrap the tables structure.
+   */
   private async runMigrations(): Promise<void> {
     const dbInstance = this.getDb();
     dbInstance.run(`
@@ -198,10 +254,12 @@ export class SqliteDatabase {
     `);
   }
 
+  /**
+   * Populates the database tables with default seed data values.
+   */
   private async seedDefaultData(): Promise<void> {
     const dbInstance = this.getDb();
     
-    // Check if seeded already
     const checkStmt = dbInstance.prepare('SELECT id FROM gates LIMIT 1');
     const hasData = checkStmt.step();
     checkStmt.free();

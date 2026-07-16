@@ -1,4 +1,6 @@
 import { ragEngineInstance } from '../ai/rag/rag-engine';
+import { cosineSimilarity } from '../../shared/math-utils';
+import { logger } from '../../shared/logger';
 
 interface CacheEntry<T> {
   value: T;
@@ -7,7 +9,7 @@ interface CacheEntry<T> {
 }
 
 export class SemanticCache {
-  private cache: Map<string, CacheEntry<any>> = new Map();
+  private cache: Map<string, CacheEntry<unknown>> = new Map();
   private static instance: SemanticCache;
 
   private constructor() {}
@@ -47,10 +49,10 @@ export class SemanticCache {
           continue;
         }
 
-        const similarity = this.cosineSimilarity(queryVector, entry.embedding);
+        const similarity = cosineSimilarity(queryVector, entry.embedding);
         if (similarity > 0.96) {
-          console.log(`[Semantic Cache Hit] Matched query "${query}" to cached key "${key}" with similarity: ${similarity.toFixed(4)}`);
-          return entry.value;
+          logger.info(`[Semantic Cache Hit] Matched query "${query}" to cached key "${key}"`, { similarity });
+          return entry.value as string;
         }
       }
     }
@@ -69,18 +71,6 @@ export class SemanticCache {
       expiresAt,
       embedding: queryVector
     });
-  }
-
-  private cosineSimilarity(vecA: number[], vecB: number[]): number {
-    let dotProduct = 0;
-    let normA = 0;
-    let normB = 0;
-    for (let i = 0; i < vecA.length; i++) {
-      dotProduct += vecA[i] * vecB[i];
-      normA += vecA[i] * vecA[i];
-      normB += vecB[i] * vecB[i];
-    }
-    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB)) || 0;
   }
 
   public clear(): void {

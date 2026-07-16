@@ -6,24 +6,26 @@ import { updateGateStatusSchema, updateGateTelemetrySchema } from '../../shared/
 
 const router = Router();
 
-router.get('/gates', stadiumControllerInstance.getGates);
+router.get('/gates', authenticate, (req, res, next) => stadiumControllerInstance.getGates(req, res, next));
 
 router.patch(
   '/gates/:id',
   authenticate,
   authorize(['OpsManager']),
   validateBody(updateGateStatusSchema),
-  stadiumControllerInstance.updateGateStatus
+  (req, res, next) => stadiumControllerInstance.updateGateStatus(req, res, next)
 );
 
 router.put(
   '/gates/:id/telemetry',
+  authenticate,
+  authorize(['OpsManager']),
   validateBody(updateGateTelemetrySchema),
-  stadiumControllerInstance.updateGateTelemetry
+  (req, res, next) => stadiumControllerInstance.updateGateTelemetry(req, res, next)
 );
 
-router.get('/telemetry', stadiumControllerInstance.getTelemetry);
-router.get('/telemetry/history', stadiumControllerInstance.getTelemetryHistory);
-router.get('/health', stadiumControllerInstance.getSystemHealth);
+router.get('/telemetry', authenticate, (req, res, next) => stadiumControllerInstance.getTelemetry(req, res, next));
+router.get('/telemetry/history', authenticate, (req, res, next) => stadiumControllerInstance.getTelemetryHistory(req, res, next));
+router.get('/health', authenticate, (req, res, next) => stadiumControllerInstance.getSystemHealth(req, res, next));
 
 export default router;

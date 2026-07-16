@@ -38,26 +38,27 @@ export class SqliteIncidentRepository implements IIncidentRepository {
     return res.changes > 0;
   }
 
-  private mapToEntity(row: any): Incident {
+  private mapToEntity(rawRow: unknown) {
+    const row = rawRow as Record<string, unknown>;
     let timeline: IncidentTimelineEntry[] = [];
     try {
-      timeline = JSON.parse(row.timeline);
+      timeline = JSON.parse(String(row['timeline']));
     } catch {
       timeline = [];
     }
 
     return new Incident(
-      row.id,
-      row.title,
-      row.description,
-      row.severity as IncidentSeverity,
-      row.status as IncidentStatus,
-      row.location,
-      row.reported_by,
-      row.assigned_staff,
-      row.ai_summary,
+      String(row['id']),
+      String(row['title']),
+      String(row['description']),
+      String(row['severity']) as IncidentSeverity,
+      String(row['status']) as IncidentStatus,
+      String(row['location']),
+      String(row['reported_by']),
+      row['assigned_staff'] != null ? String(row['assigned_staff']) : null,
+      row['ai_summary'] != null ? String(row['ai_summary']) : null,
       timeline,
-      new Date(row.created_at)
+      new Date(String(row['created_at']))
     );
   }
 }

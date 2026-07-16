@@ -8,11 +8,22 @@ export interface AiMetricLog {
   hallucinationFlagged: boolean;
 }
 
+/** Aggregated AI performance metrics summary. */
+export interface AiMetricsSummary {
+  totalRequests: number;
+  averageLatencyMs: number;
+  totalTokensConsumed: number;
+  totalCostUSD: number;
+  hallucinationRate: number;
+  averageAccuracy: number;
+}
+
 export class AiEvaluator {
   private static logs: AiMetricLog[] = [];
   
-  // Gemini 1.5 Flash Pricing (per 1K tokens)
+  /** Gemini 1.5 Flash Pricing – input cost per 1K tokens. */
   private static readonly INPUT_COST_PER_K = 0.000075; 
+  /** Gemini 1.5 Flash Pricing – output cost per 1K tokens. */
   private static readonly OUTPUT_COST_PER_K = 0.0003; 
 
   public static logMetric(
@@ -37,7 +48,8 @@ export class AiEvaluator {
     });
   }
 
-  public static getMetricsSummary() {
+  /** Returns an aggregated summary of all logged AI metrics. */
+  public static getMetricsSummary(): AiMetricsSummary {
     const totalRequests = this.logs.length;
     if (totalRequests === 0) {
       return {

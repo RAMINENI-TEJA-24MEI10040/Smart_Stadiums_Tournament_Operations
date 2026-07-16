@@ -38,25 +38,26 @@ export class SqliteMatchRepository implements IMatchRepository {
     return res.changes > 0;
   }
 
-  private mapToEntity(row: any): Match {
+  private mapToEntity(rawRow: unknown) {
+    const row = rawRow as Record<string, unknown>;
     let safetyLog: string[] = [];
     try {
-      safetyLog = JSON.parse(row.safety_log);
+      safetyLog = JSON.parse(String(row['safety_log']));
     } catch {
       safetyLog = [];
     }
 
     return new Match(
-      row.id,
-      row.home_team,
-      row.away_team,
-      new Date(row.start_time),
-      new Date(row.end_time),
-      row.status as MatchStatus,
-      row.venue,
-      row.referee,
+      String(row['id']),
+      String(row['home_team']),
+      String(row['away_team']),
+      new Date(String(row['start_time'])),
+      new Date(String(row['end_time'])),
+      String(row['status']) as MatchStatus,
+      String(row['venue']),
+      String(row['referee']),
       safetyLog,
-      new Date(row.created_at)
+      new Date(String(row['created_at']))
     );
   }
 }

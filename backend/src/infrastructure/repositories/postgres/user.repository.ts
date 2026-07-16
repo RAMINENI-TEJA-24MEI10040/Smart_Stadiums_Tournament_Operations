@@ -43,15 +43,16 @@ export class PostgresUserRepository implements IUserRepository {
     return (res.rowCount ?? 0) > 0;
   }
 
-  private mapToEntity(row: any): User {
+  private mapToEntity(rawRow: unknown) {
+    const row = rawRow as Record<string, unknown>;
     return new User(
-      row.id,
-      row.username,
-      row.password_hash,
-      row.role as UserRole,
-      row.name,
-      row.email,
-      new Date(row.created_at)
+      String(row['id']),
+      String(row['username']),
+      String(row['password_hash']),
+      String(row['role']) as UserRole,
+      String(row['name']),
+      String(row['email']),
+      new Date(row['created_at'] as string)
     );
   }
 }

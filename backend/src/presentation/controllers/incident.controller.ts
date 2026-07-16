@@ -1,18 +1,32 @@
 import { Response, NextFunction } from 'express';
-import { incidentServiceInstance } from '../../application/services/incident.service';
+import { getIncidentService } from '../../application/services/incident.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 
+/** Anonymous caller fallback string. */
+const ANONYMOUS_ACTOR = 'anonymous';
+
+/**
+ * Controller handling safety tickets filing, responder dispatching, and AI summaries.
+ * Strictly validates inputs, authorizes roles, and delegates business rules to IncidentService.
+ */
 export class IncidentController {
+  /**
+   * Files a new incident ticket.
+   */
   public async file(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const reporter = req.user ? req.user.username : 'anonymous';
-      const incident = await incidentServiceInstance.fileIncident({
-        title: req.body.title,
-        description: req.body.description,
-        severity: req.body.severity,
-        location: req.body.location,
+      const reporter = this.resolveActor(req);
+      const { title, description, severity, location } = req.body;
+      const incidentService = getIncidentService();
+
+      const incident = await incidentService.fileIncident({
+        title,
+        description,
+        severity,
+        location,
         reportedBy: reporter
       });
+
       res.status(201).json({
         status: 'Success',
         message: 'Incident reported successfully',
@@ -23,9 +37,13 @@ export class IncidentController {
     }
   }
 
+  /**
+   * Retrieves all registered incident tickets.
+   */
   public async getIncidents(_req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const incidents = await incidentServiceInstance.getIncidents();
+      const incidentService = getIncidentService();
+      const incidents = await incidentService.getIncidents();
       res.status(200).json({
         status: 'Success',
         data: incidents.map(i => i.toJSON())
@@ -35,15 +53,22 @@ export class IncidentController {
     }
   }
 
+  /**
+   * Appends status update commentary to the incident's progress log timeline.
+   */
   public async updateStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const updater = req.user ? req.user.username : 'anonymous';
-      const incident = await incidentServiceInstance.updateIncidentStatus(
+      const updater = this.resolveActor(req);
+      const { status, comment } = req.body;
+      const incidentService = getIncidentService();
+
+      const incident = await incidentService.updateIncidentStatus(
         req.params.id,
-        req.body.status,
-        req.body.comment,
+        status,
+        comment,
         updater
       );
+
       res.status(200).json({
         status: 'Success',
         message: 'Incident timeline updated successfully',
@@ -54,14 +79,21 @@ export class IncidentController {
     }
   }
 
+  /**
+   * Dispatches a named responder or staff member to the incident area.
+   */
   public async assignStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const updater = req.user ? req.user.username : 'anonymous';
-      const incident = await incidentServiceInstance.assignStaff(
+      const updater = this.resolveActor(req);
+      const { assignedStaff } = req.body;
+      const incidentService = getIncidentService();
+
+      const incident = await incidentService.assignStaff(
         req.params.id,
-        req.body.assignedStaff,
+        assignedStaff,
         updater
       );
+
       res.status(200).json({
         status: 'Success',
         message: 'Responder dispatched successfully',
@@ -72,10 +104,13 @@ export class IncidentController {
     }
   }
 
-  // AI Endpoint: invokes Gemini model to write a briefing report
+  /**
+   * Generates a professional AI executive summary briefing card.
+   */
   public async generateSummary(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const incident = await incidentServiceInstance.generateAiSummary(req.params.id);
+      const incidentService = getIncidentService();
+      const incident = await incidentService.generateAiSummary(req.params.id);
       res.status(200).json({
         status: 'Success',
         message: 'AI briefing report compiled successfully',
@@ -84,6 +119,14 @@ export class IncidentController {
     } catch (err) {
       next(err);
     }
+  }
+
+  /**
+   * Extracts the actor's username from the authenticated request object.
+   * @param req The incoming request object
+   */
+  private resolveActor(req: AuthenticatedRequest): string {
+    return req.user?.username ?? ANONYMOUS_ACTOR;
   }
 }
 

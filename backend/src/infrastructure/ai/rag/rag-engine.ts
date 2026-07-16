@@ -1,8 +1,10 @@
+import { cosineSimilarity } from '../../../shared/math-utils';
+
 export interface DocumentChunk {
   id: string;
   text: string;
   source: string;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
   embedding?: number[];
 }
 
@@ -82,26 +84,19 @@ export class RagEngine {
     return embedding.map(val => val / mag);
   }
 
-  private cosineSimilarity(vecA: number[], vecB: number[]): number {
-    let dotProduct = 0;
-    let normA = 0;
-    let normB = 0;
-    for (let i = 0; i < vecA.length; i++) {
-      dotProduct += vecA[i] * vecB[i];
-      normA += vecA[i] * vecA[i];
-      normB += vecB[i] * vecB[i];
-    }
-    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB)) || 0;
-  }
-
-  // Hybrid Search: Keyword BM25-style frequency score + Semantic similarity vector score
+  /**
+   * Hybrid Search: Keyword frequency score + Semantic similarity vector score.
+   * 
+   * @param query The operator search prompt string
+   * @param limit Maximum chunk elements to retrieve
+   */
   public search(query: string, limit: number = 3): DocumentChunk[] {
     const queryVector = this.generateEmbedding(query);
     const queryTerms = query.toLowerCase().split(/\W+/);
 
     const scored = this.chunks.map(chunk => {
       // Vector semantic similarity
-      const semanticScore = this.cosineSimilarity(queryVector, chunk.embedding || []);
+      const semanticScore = cosineSimilarity(queryVector, chunk.embedding || []);
 
       // Keyword term matching frequency
       const chunkTokens = chunk.text.toLowerCase().split(/\W+/);

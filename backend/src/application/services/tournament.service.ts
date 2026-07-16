@@ -8,16 +8,17 @@ import { logger } from '../../shared/logger';
 /**
  * Service orchestrating tournament match scheduling, venue conflict validations,
  * and real-time status changes.
+ * Decoupled from concrete adapters via constructor-based dependency injection.
  */
 export class TournamentService implements ITournamentService {
-  private matchRepository?: IMatchRepository;
+  private readonly matchRepository: IMatchRepository;
 
-  constructor(matchRepository?: IMatchRepository) {
+  /**
+   * Creates an instance of TournamentService.
+   * @param matchRepository Injected repository adapter for match schedules persistence
+   */
+  constructor(matchRepository: IMatchRepository) {
     this.matchRepository = matchRepository;
-  }
-
-  private get matchRepo(): IMatchRepository {
-    return this.matchRepository || dbFactoryInstance.getRepositories().matchRepository;
   }
 
   /**
@@ -37,7 +38,7 @@ export class TournamentService implements ITournamentService {
     referee: string;
   }): Promise<Match> {
     logger.info(`Request received to schedule match: ${payload.homeTeam} vs ${payload.awayTeam} at ${payload.venue}`);
-    const matches = await this.matchRepo.findAll();
+    const matches = await this.matchRepository.findAll();
     
     // Check for double bookings (same venue, overlapping times)
     const newStart = new Date(payload.startTime).getTime();
@@ -69,7 +70,7 @@ export class TournamentService implements ITournamentService {
       new Date()
     );
 
-    const saved = await this.matchRepo.save(newMatch);
+    const saved = await this.matchRepository.save(newMatch);
     logger.info(`Match successfully scheduled with ID: ${matchId}`);
     return saved;
   }
@@ -81,7 +82,7 @@ export class TournamentService implements ITournamentService {
    */
   public async getMatches(): Promise<Match[]> {
     logger.info('Fetching scheduled matches from repository');
-    return this.matchRepo.findAll();
+    return this.matchRepository.findAll();
   }
 
   /**
@@ -95,7 +96,7 @@ export class TournamentService implements ITournamentService {
    */
   public async updateMatchStatus(matchId: string, status: MatchStatus, safetyMessage?: string): Promise<Match> {
     logger.info(`Request received to update match status: Match ID ${matchId} to ${status}`);
-    const match = await this.matchRepo.findById(matchId);
+    const match = await this.matchRepository.findById(matchId);
     if (!match) {
       logger.warn(`Match status update rejected: Match ID ${matchId} not found`);
       throw new NotFoundException('Match not found');
@@ -120,10 +121,22 @@ export class TournamentService implements ITournamentService {
       match.createdAt
     );
 
-    const saved = await this.matchRepo.save(updatedMatch);
+    const saved = await this.matchRepository.save(updatedMatch);
     logger.info(`Match status successfully updated for ID: ${matchId}`);
     return saved;
   }
 }
 
-export const tournamentServiceInstance = new TournamentService();
+let tournamentServiceInstanceCache: TournamentService | null = null;
+
+/**
+ * Returns the active TournamentService instance.
+ * Instantiates the service lazily once the database repositories are initialized.
+ */
+export function getTournamentService(): TournamentService {
+  if (!tournamentServiceInstanceCache) {
+    const repos = dbFactoryInstance.getRepositories();
+    tournamentServiceInstanceCache = new TournamentService(repos.matchRepository);
+  }
+  return tournamentServiceInstanceCache;
+}

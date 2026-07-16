@@ -11,17 +11,17 @@ router.post(
   authenticate,
   authorize(['OpsManager', 'Security']),
   validateBody(fileIncidentSchema),
-  incidentControllerInstance.file
+  (req, res, next) => incidentControllerInstance.file(req, res, next)
 );
 
-router.get('/', authenticate, incidentControllerInstance.getIncidents);
+router.get('/', authenticate, (req, res, next) => incidentControllerInstance.getIncidents(req, res, next));
 
 router.patch(
   '/:id/status',
   authenticate,
   authorize(['OpsManager', 'Security']),
   validateBody(updateIncidentStatusSchema),
-  incidentControllerInstance.updateStatus
+  (req, res, next) => incidentControllerInstance.updateStatus(req, res, next)
 );
 
 router.patch(
@@ -29,9 +29,14 @@ router.patch(
   authenticate,
   authorize(['OpsManager', 'Security']),
   validateBody(assignIncidentStaffSchema),
-  incidentControllerInstance.assignStaff
+  (req, res, next) => incidentControllerInstance.assignStaff(req, res, next)
 );
 
-router.post('/:id/summary', authenticate, incidentControllerInstance.generateSummary);
+router.post(
+  '/:id/summary',
+  authenticate,
+  authorize(['OpsManager', 'Security']),
+  (req, res, next) => incidentControllerInstance.generateSummary(req, res, next)
+);
 
 export default router;

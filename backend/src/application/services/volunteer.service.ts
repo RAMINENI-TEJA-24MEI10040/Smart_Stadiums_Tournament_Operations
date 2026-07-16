@@ -5,18 +5,27 @@ import { IVolunteerRepository } from '../interfaces/volunteer-repository.interfa
 import { NotFoundException } from '../../shared/exceptions';
 import { logger } from '../../shared/logger';
 
+/** Default section status values. */
+const DEFAULT_SECTION = 'Unassigned';
+
+/** Default volunteer status values. */
+const VOLUNTEER_OFFLINE = 'Offline';
+const VOLUNTEER_AVAILABLE = 'Available';
+const VOLUNTEER_ACTIVE = 'Active';
+
 /**
  * Service managing volunteer profiles, shift check-ins, check-outs, and task allocations.
+ * Decoupled from concrete adapters via constructor-based dependency injection.
  */
 export class VolunteerService implements IVolunteerService {
-  private volunteerRepository?: IVolunteerRepository;
+  private readonly volunteerRepository: IVolunteerRepository;
 
-  constructor(volunteerRepository?: IVolunteerRepository) {
+  /**
+   * Creates an instance of VolunteerService.
+   * @param volunteerRepository Injected repository adapter for volunteer profiles
+   */
+  constructor(volunteerRepository: IVolunteerRepository) {
     this.volunteerRepository = volunteerRepository;
-  }
-
-  private get volunteerRepo(): IVolunteerRepository {
-    return this.volunteerRepository || dbFactoryInstance.getRepositories().volunteerRepository;
   }
 
   /**
@@ -33,15 +42,15 @@ export class VolunteerService implements IVolunteerService {
       id,
       userId,
       name,
-      'Unassigned',
+      DEFAULT_SECTION,
       [],
-      'Offline',
+      VOLUNTEER_OFFLINE,
       null,
       null,
       null
     );
 
-    const saved = await this.volunteerRepo.save(newVol);
+    const saved = await this.volunteerRepository.save(newVol);
     logger.info(`Volunteer profile created successfully with ID: ${id}`);
     return saved;
   }
@@ -61,7 +70,7 @@ export class VolunteerService implements IVolunteerService {
     skills: string[]
   ): Promise<Volunteer> {
     logger.info(`Shift check-in requested for Volunteer ID: ${volunteerId} at ${assignedSection}`);
-    const volunteer = await this.volunteerRepo.findById(volunteerId);
+    const volunteer = await this.volunteerRepository.findById(volunteerId);
     if (!volunteer) {
       logger.warn(`Shift check-in rejected: Volunteer ID ${volunteerId} not found`);
       throw new NotFoundException('Volunteer not found');
@@ -73,13 +82,13 @@ export class VolunteerService implements IVolunteerService {
       volunteer.name,
       assignedSection,
       skills,
-      'Available',
+      VOLUNTEER_AVAILABLE,
       null,
       new Date(),
       null
     );
 
-    const saved = await this.volunteerRepo.save(updated);
+    const saved = await this.volunteerRepository.save(updated);
     logger.info(`Shift check-in completed successfully for Volunteer ID: ${volunteerId}`);
     return saved;
   }
@@ -93,7 +102,7 @@ export class VolunteerService implements IVolunteerService {
    */
   public async checkOut(volunteerId: string): Promise<Volunteer> {
     logger.info(`Shift check-out requested for Volunteer ID: ${volunteerId}`);
-    const volunteer = await this.volunteerRepo.findById(volunteerId);
+    const volunteer = await this.volunteerRepository.findById(volunteerId);
     if (!volunteer) {
       logger.warn(`Shift check-out rejected: Volunteer ID ${volunteerId} not found`);
       throw new NotFoundException('Volunteer not found');
@@ -105,13 +114,13 @@ export class VolunteerService implements IVolunteerService {
       volunteer.name,
       volunteer.assignedSection,
       volunteer.skills,
-      'Offline',
+      VOLUNTEER_OFFLINE,
       null,
       volunteer.checkInTime,
       new Date()
     );
 
-    const saved = await this.volunteerRepo.save(updated);
+    const saved = await this.volunteerRepository.save(updated);
     logger.info(`Shift check-out completed successfully for Volunteer ID: ${volunteerId}`);
     return saved;
   }
@@ -131,7 +140,7 @@ export class VolunteerService implements IVolunteerService {
     task: string
   ): Promise<Volunteer> {
     logger.info(`Reallocating Volunteer ID: ${volunteerId} to section: ${section} for task: "${task}"`);
-    const volunteer = await this.volunteerRepo.findById(volunteerId);
+    const volunteer = await this.volunteerRepository.findById(volunteerId);
     if (!volunteer) {
       logger.warn(`Volunteer reallocation rejected: Volunteer ID ${volunteerId} not found`);
       throw new NotFoundException('Volunteer not found');
@@ -143,13 +152,13 @@ export class VolunteerService implements IVolunteerService {
       volunteer.name,
       section,
       volunteer.skills,
-      'Active',
+      VOLUNTEER_ACTIVE,
       task,
       volunteer.checkInTime,
       volunteer.checkOutTime
     );
 
-    const saved = await this.volunteerRepo.save(updated);
+    const saved = await this.volunteerRepository.save(updated);
     logger.info(`Volunteer ID: ${volunteerId} reallocated successfully`);
     return saved;
   }
@@ -161,8 +170,20 @@ export class VolunteerService implements IVolunteerService {
    */
   public async getVolunteers(): Promise<Volunteer[]> {
     logger.info('Fetching volunteers list from repository');
-    return this.volunteerRepo.findAll();
+    return this.volunteerRepository.findAll();
   }
 }
 
-export const volunteerServiceInstance = new VolunteerService();
+let volunteerServiceInstanceCache: VolunteerService | null = null;
+
+/**
+ * Returns the active VolunteerService instance.
+ * Instantiates the service lazily once the database repositories are initialized.
+ */
+export function getVolunteerService(): VolunteerService {
+  if (!volunteerServiceInstanceCache) {
+    const repos = dbFactoryInstance.getRepositories();
+    volunteerServiceInstanceCache = new VolunteerService(repos.volunteerRepository);
+  }
+  return volunteerServiceInstanceCache;
+}

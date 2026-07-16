@@ -17,7 +17,7 @@ export const api = {
     return payload.data as T;
   },
 
-  async post<T>(url: string, body: any): Promise<T> {
+  async post<T>(url: string, body: Record<string, unknown>): Promise<T> {
     const res = await fetch(url, {
       method: 'POST',
       headers: getHeaders(),
@@ -31,7 +31,7 @@ export const api = {
     return payload.data as T;
   },
 
-  async patch<T>(url: string, body: any): Promise<T> {
+  async patch<T>(url: string, body: Record<string, unknown>): Promise<T> {
     const res = await fetch(url, {
       method: 'PATCH',
       headers: getHeaders(),
@@ -45,7 +45,7 @@ export const api = {
     return payload.data as T;
   },
 
-  async put<T>(url: string, body: any): Promise<T> {
+  async put<T>(url: string, body: Record<string, unknown>): Promise<T> {
     const res = await fetch(url, {
       method: 'PUT',
       headers: getHeaders(),

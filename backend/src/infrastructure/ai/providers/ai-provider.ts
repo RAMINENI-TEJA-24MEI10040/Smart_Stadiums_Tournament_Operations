@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { logger } from '../../../shared/logger';
 
 export interface AIResponse {
   text: string;
@@ -13,14 +14,23 @@ export interface IAIProvider {
   generateText(prompt: string, systemInstruction?: string): Promise<AIResponse>;
 }
 
+/** Default Gemini model identifier. */
+const DEFAULT_MODEL = 'gemini-1.5-flash';
+
+/** Token estimation multiplier for word-to-token approximation. */
+const TOKEN_ESTIMATE_MULTIPLIER = 1.3;
+
+/**
+ * Production AI provider using Google Gemini generative AI SDK.
+ */
 export class GeminiProvider implements IAIProvider {
-  private genAI: any;
-  private modelName: string;
+  private readonly genAI: GoogleGenerativeAI;
+  private readonly modelName: string;
 
   constructor() {
-    const apiKey = process.env.GEMINI_API_KEY || '';
+    const apiKey = process.env.GEMINI_API_KEY ?? '';
     this.genAI = new GoogleGenerativeAI(apiKey);
-    this.modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+    this.modelName = process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
   }
 
   public async generateText(prompt: string, systemInstruction?: string): Promise<AIResponse> {
@@ -41,13 +51,13 @@ export class GeminiProvider implements IAIProvider {
       return {
         text,
         tokenCount: {
-          promptTokens: Math.ceil(promptWords * 1.3),
-          completionTokens: Math.ceil(completionWords * 1.3),
-          totalTokens: Math.ceil((promptWords + completionWords) * 1.3)
+          promptTokens: Math.ceil(promptWords * TOKEN_ESTIMATE_MULTIPLIER),
+          completionTokens: Math.ceil(completionWords * TOKEN_ESTIMATE_MULTIPLIER),
+          totalTokens: Math.ceil((promptWords + completionWords) * TOKEN_ESTIMATE_MULTIPLIER)
         }
       };
     } catch (err) {
-      console.error('Gemini API call failed, falling back to mock response.', err);
+      logger.error('Gemini API call failed, falling back to mock response.', err instanceof Error ? err : new Error(String(err)));
       return this.generateMockResponse(prompt);
     }
   }

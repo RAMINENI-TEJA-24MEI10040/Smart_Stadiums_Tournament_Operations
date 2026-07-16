@@ -44,24 +44,25 @@ export class PostgresVolunteerRepository implements IVolunteerRepository {
     return (res.rowCount ?? 0) > 0;
   }
 
-  private mapToEntity(row: any): Volunteer {
+  private mapToEntity(rawRow: unknown) {
+    const row = rawRow as Record<string, unknown>;
     let skills: string[] = [];
     try {
-      skills = JSON.parse(row.skills);
+      skills = JSON.parse(String(row['skills']));
     } catch {
       skills = [];
     }
 
     return new Volunteer(
-      row.id,
-      row.user_id,
-      row.name,
-      row.assigned_section,
+      String(row['id']),
+      row['user_id'] != null ? String(row['user_id']) : null,
+      String(row['name']),
+      String(row['assigned_section']),
       skills,
-      row.status as VolunteerStatus,
-      row.current_task,
-      row.check_in_time ? new Date(row.check_in_time) : null,
-      row.check_out_time ? new Date(row.check_out_time) : null
+      String(row['status']) as VolunteerStatus,
+      row['current_task'] != null ? String(row['current_task']) : null,
+      row['check_in_time'] ? new Date(row['check_in_time'] as string) : null,
+      row['check_out_time'] ? new Date(row['check_out_time'] as string) : null
     );
   }
 }

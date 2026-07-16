@@ -4,8 +4,9 @@ import { IGateRepository } from '../../application/interfaces/gate-repository.in
 import { IIncidentRepository } from '../../application/interfaces/incident-repository.interface';
 import { IVolunteerRepository } from '../../application/interfaces/volunteer-repository.interface';
 import { ITelemetryRepository } from '../../application/interfaces/telemetry-repository.interface';
+import { logger } from '../../shared/logger';
 
-// JSON imports
+// JSON adapter imports
 import { JsonUserRepository } from '../repositories/json/user.repository';
 import { JsonMatchRepository } from '../repositories/json/match.repository';
 import { JsonGateRepository } from '../repositories/json/gate.repository';
@@ -13,7 +14,7 @@ import { JsonIncidentRepository } from '../repositories/json/incident.repository
 import { JsonVolunteerRepository } from '../repositories/json/volunteer.repository';
 import { JsonTelemetryRepository } from '../repositories/json/telemetry.repository';
 
-// SQLite imports
+// SQLite adapter imports
 import { SqliteUserRepository } from '../repositories/sqlite/user.repository';
 import { SqliteMatchRepository } from '../repositories/sqlite/match.repository';
 import { SqliteGateRepository } from '../repositories/sqlite/gate.repository';
@@ -22,7 +23,7 @@ import { SqliteVolunteerRepository } from '../repositories/sqlite/volunteer.repo
 import { SqliteTelemetryRepository } from '../repositories/sqlite/telemetry.repository';
 import { sqliteDbInstance } from './sqlite-db';
 
-// Postgres imports
+// PostgreSQL adapter imports
 import { PostgresUserRepository } from '../repositories/postgres/user.repository';
 import { PostgresMatchRepository } from '../repositories/postgres/match.repository';
 import { PostgresGateRepository } from '../repositories/postgres/gate.repository';
@@ -40,47 +41,50 @@ export interface RepositoryContainer {
   telemetryRepository: ITelemetryRepository;
 }
 
+/** Supported database provider identifiers. */
+type DbProvider = 'postgres' | 'postgresql' | 'sqlite' | 'sqlite3' | 'json';
+
 class DatabaseFactory {
   private container: RepositoryContainer | null = null;
 
+  /**
+   * Initializes the database connection and builds the repository container
+   * matching the `DB_PROVIDER` environment variable.
+   * Falls back to SQLite if PostgreSQL connection fails.
+   */
   public async initialize(): Promise<RepositoryContainer> {
-    const provider = (process.env.DB_PROVIDER || 'json').toLowerCase();
+    const provider = (process.env.DB_PROVIDER ?? 'json').toLowerCase() as DbProvider;
 
     if (provider === 'postgres' || provider === 'postgresql') {
-      try {
-        await postgresDbInstance.initialize();
-        this.container = {
-          userRepository: new PostgresUserRepository(),
-          matchRepository: new PostgresMatchRepository(),
-          gateRepository: new PostgresGateRepository(),
-          incidentRepository: new PostgresIncidentRepository(),
-          volunteerRepository: new PostgresVolunteerRepository(),
-          telemetryRepository: new PostgresTelemetryRepository()
-        };
-        console.log('Database initialized successfully using provider: POSTGRESQL');
-      } catch (err) {
-        console.warn('Postgres connection failed, falling back to SQLite.', err);
-        await this.fallbackToSqlite();
-      }
+      await this.initializePostgres();
     } else if (provider === 'sqlite' || provider === 'sqlite3') {
-      await this.fallbackToSqlite();
+      await this.initializeSqlite();
     } else {
-      // Default fallback to JSON File Database
-      this.container = {
-        userRepository: new JsonUserRepository(),
-        matchRepository: new JsonMatchRepository(),
-        gateRepository: new JsonGateRepository(),
-        incidentRepository: new JsonIncidentRepository(),
-        volunteerRepository: new JsonVolunteerRepository(),
-        telemetryRepository: new JsonTelemetryRepository()
-      };
-      console.log('Database initialized successfully using provider: LOCAL JSON FILE');
+      this.initializeJson();
     }
 
     return this.container!;
   }
 
-  private async fallbackToSqlite(): Promise<void> {
+  private async initializePostgres(): Promise<void> {
+    try {
+      await postgresDbInstance.initialize();
+      this.container = {
+        userRepository: new PostgresUserRepository(),
+        matchRepository: new PostgresMatchRepository(),
+        gateRepository: new PostgresGateRepository(),
+        incidentRepository: new PostgresIncidentRepository(),
+        volunteerRepository: new PostgresVolunteerRepository(),
+        telemetryRepository: new PostgresTelemetryRepository()
+      };
+      logger.info('Database initialized successfully using provider: POSTGRESQL');
+    } catch (err) {
+      logger.warn('PostgreSQL connection failed — falling back to SQLite.', { error: err instanceof Error ? err.message : String(err) });
+      await this.initializeSqlite();
+    }
+  }
+
+  private async initializeSqlite(): Promise<void> {
     await sqliteDbInstance.initialize();
     this.container = {
       userRepository: new SqliteUserRepository(),
@@ -90,12 +94,28 @@ class DatabaseFactory {
       volunteerRepository: new SqliteVolunteerRepository(),
       telemetryRepository: new SqliteTelemetryRepository()
     };
-    console.log('Database initialized successfully using provider: SQLITE');
+    logger.info('Database initialized successfully using provider: SQLITE');
   }
 
+  private initializeJson(): void {
+    this.container = {
+      userRepository: new JsonUserRepository(),
+      matchRepository: new JsonMatchRepository(),
+      gateRepository: new JsonGateRepository(),
+      incidentRepository: new JsonIncidentRepository(),
+      volunteerRepository: new JsonVolunteerRepository(),
+      telemetryRepository: new JsonTelemetryRepository()
+    };
+    logger.info('Database initialized successfully using provider: LOCAL JSON FILE');
+  }
+
+  /**
+   * Returns the active repository container.
+   * @throws Error if initialize() has not been called yet.
+   */
   public getRepositories(): RepositoryContainer {
     if (!this.container) {
-      throw new Error('Database Factory has not been initialized. Call initialize() first.');
+      throw new Error('DatabaseFactory has not been initialized. Call initialize() first.');
     }
     return this.container;
   }

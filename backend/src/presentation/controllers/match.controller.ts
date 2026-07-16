@@ -1,10 +1,28 @@
 import { Request, Response, NextFunction } from 'express';
-import { tournamentServiceInstance } from '../../application/services/tournament.service';
+import { getTournamentService } from '../../application/services/tournament.service';
 
+/**
+ * Controller handling match schedules and live status tracking.
+ * Strictly validates inputs, authorizes roles, and delegates business rules to TournamentService.
+ */
 export class MatchController {
+  /**
+   * Schedules a new tournament match.
+   */
   public async schedule(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const match = await tournamentServiceInstance.scheduleMatch(req.body);
+      const { homeTeam, awayTeam, startTime, endTime, venue, referee } = req.body;
+      const tournamentService = getTournamentService();
+      
+      const match = await tournamentService.scheduleMatch({
+        homeTeam,
+        awayTeam,
+        startTime,
+        endTime,
+        venue,
+        referee
+      });
+
       res.status(201).json({
         status: 'Success',
         message: 'Match scheduled successfully',
@@ -15,9 +33,13 @@ export class MatchController {
     }
   }
 
+  /**
+   * Retrieves all scheduled matches.
+   */
   public async getMatches(_req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const matches = await tournamentServiceInstance.getMatches();
+      const tournamentService = getTournamentService();
+      const matches = await tournamentService.getMatches();
       res.status(200).json({
         status: 'Success',
         data: matches.map(m => m.toJSON())
@@ -27,13 +49,20 @@ export class MatchController {
     }
   }
 
+  /**
+   * Updates operational status and logs of a match.
+   */
   public async updateStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const match = await tournamentServiceInstance.updateMatchStatus(
+      const { status, safetyMessage } = req.body;
+      const tournamentService = getTournamentService();
+      
+      const match = await tournamentService.updateMatchStatus(
         req.params.id,
-        req.body.status,
-        req.body.safetyMessage
+        status,
+        safetyMessage
       );
+
       res.status(200).json({
         status: 'Success',
         message: 'Match status updated successfully',

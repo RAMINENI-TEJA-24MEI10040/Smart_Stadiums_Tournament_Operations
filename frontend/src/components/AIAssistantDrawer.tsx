@@ -15,7 +15,14 @@ interface ChatHistoryItem {
     tokens: number;
     costUSD: number;
   };
-  tools?: Array<{ name: string; params: any }>;
+  tools?: Array<{ name: string; params: Record<string, unknown> }>;
+}
+
+interface AIQueryResponse {
+  responseText: string;
+  agentName: string;
+  metrics: { latencyMs: number; tokens: number; costUSD: number };
+  suggestedTools: Array<{ name: string; params: Record<string, unknown> }>;
 }
 
 export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ onToolExecuted }) => {
@@ -30,7 +37,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ onToolExec
   const [targetLang, setTargetLang] = useState('English');
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -59,13 +66,13 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ onToolExec
       }
       setIsListening(false);
     } else {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SpeechRecognition) {
+      const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognitionCtor) {
         alert('Speech recognition is not supported in this browser.');
         return;
       }
 
-      const recObj = new SpeechRecognition();
+      const recObj = new SpeechRecognitionCtor();
       recObj.continuous = false;
       recObj.interimResults = false;
       recObj.lang = 'en-US';
@@ -74,7 +81,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ onToolExec
         setIsListening(true);
       };
 
-      recObj.onresult = (event: any) => {
+      recObj.onresult = (event: SpeechRecognitionEvent) => {
         const transcript = event.results[0][0].transcript;
         setQuery(transcript);
       };
@@ -108,7 +115,8 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ onToolExec
         finalPrompt = `${userText} (Please translate your response into ${targetLang})`;
       }
 
-      const res = await api.post<any>('/api/ai/query', { query: finalPrompt });
+
+      const res = await api.post<AIQueryResponse>('/api/ai/query', { query: finalPrompt });
       
       const newAiItem: ChatHistoryItem = {
         sender: 'ai',
@@ -130,7 +138,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ onToolExec
     }
   };
 
-  const executeToolCall = async (tool: { name: string; params: any }) => {
+  const executeToolCall = async (tool: { name: string; params: Record<string, unknown> }) => {
     try {
       if (tool.name === 'updateGateStatus') {
         await api.patch(`/api/stadium/gates/${tool.params.gateId}`, { status: tool.params.status });

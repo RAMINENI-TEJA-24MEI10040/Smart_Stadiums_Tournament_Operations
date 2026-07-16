@@ -1,10 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
-import { volunteerServiceInstance } from '../../application/services/volunteer.service';
+import { getVolunteerService } from '../../application/services/volunteer.service';
 
+/**
+ * Controller handling volunteer registration, check-ins, check-outs, and section reallocations.
+ * Strictly validates inputs, authorizes roles, and delegates business rules to VolunteerService.
+ */
 export class VolunteerController {
+  /**
+   * Retrieves all registered volunteers.
+   */
   public async getVolunteers(_req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const list = await volunteerServiceInstance.getVolunteers();
+      const volunteerService = getVolunteerService();
+      const list = await volunteerService.getVolunteers();
       res.status(200).json({
         status: 'Success',
         data: list.map(v => v.toJSON())
@@ -14,9 +22,15 @@ export class VolunteerController {
     }
   }
 
+  /**
+   * Registers a new volunteer roster profile.
+   */
   public async register(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const vol = await volunteerServiceInstance.registerVolunteer(req.body.name);
+      const { name } = req.body;
+      const volunteerService = getVolunteerService();
+      const vol = await volunteerService.registerVolunteer(name);
+      
       res.status(201).json({
         status: 'Success',
         message: 'Volunteer registered in roster',
@@ -27,13 +41,19 @@ export class VolunteerController {
     }
   }
 
+  /**
+   * Commences a volunteer's shift, mapping skills and assigning a location sector.
+   */
   public async checkIn(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const vol = await volunteerServiceInstance.checkIn(
+      const { assignedSection, skills } = req.body;
+      const volunteerService = getVolunteerService();
+      const vol = await volunteerService.checkIn(
         req.params.id,
-        req.body.assignedSection,
-        req.body.skills
+        assignedSection,
+        skills
       );
+
       res.status(200).json({
         status: 'Success',
         message: 'Volunteer check-in recorded successfully',
@@ -44,9 +64,14 @@ export class VolunteerController {
     }
   }
 
+  /**
+   * Concludes a volunteer's shift.
+   */
   public async checkOut(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const vol = await volunteerServiceInstance.checkOut(req.params.id);
+      const volunteerService = getVolunteerService();
+      const vol = await volunteerService.checkOut(req.params.id);
+      
       res.status(200).json({
         status: 'Success',
         message: 'Volunteer checkout recorded successfully',
@@ -57,13 +82,19 @@ export class VolunteerController {
     }
   }
 
+  /**
+   * Reallocates a volunteer to a new stadium section and assigns an active task.
+   */
   public async reallocate(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const vol = await volunteerServiceInstance.reallocateVolunteer(
+      const { section, task } = req.body;
+      const volunteerService = getVolunteerService();
+      const vol = await volunteerService.reallocateVolunteer(
         req.params.id,
-        req.body.section,
-        req.body.task
+        section,
+        task
       );
+
       res.status(200).json({
         status: 'Success',
         message: 'Volunteer reallocated to section successfully',

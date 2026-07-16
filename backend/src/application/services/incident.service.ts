@@ -6,19 +6,23 @@ import { IIncidentRepository } from '../interfaces/incident-repository.interface
 import { NotFoundException } from '../../shared/exceptions';
 import { logger } from '../../shared/logger';
 
+/** Default persona prompt assigned to the AI incident analyzer agent. */
+const INCIDENT_BRIEF_PERSONA = 'You generate corporate incident briefs.';
+
 /**
  * Service managing stadium safety ticket reports, timeline updates, responder assignments,
  * and AI-generated executive briefs.
+ * Decoupled from concrete adapters via constructor-based dependency injection.
  */
 export class IncidentService implements IIncidentService {
-  private incidentRepository?: IIncidentRepository;
+  private readonly incidentRepository: IIncidentRepository;
 
-  constructor(incidentRepository?: IIncidentRepository) {
+  /**
+   * Creates an instance of IncidentService.
+   * @param incidentRepository Injected repository adapter for safety tickets persistence
+   */
+  constructor(incidentRepository: IIncidentRepository) {
     this.incidentRepository = incidentRepository;
-  }
-
-  private get incidentRepo(): IIncidentRepository {
-    return this.incidentRepository || dbFactoryInstance.getRepositories().incidentRepository;
   }
 
   /**
@@ -57,7 +61,7 @@ export class IncidentService implements IIncidentService {
       new Date()
     );
 
-    const saved = await this.incidentRepo.save(newIncident);
+    const saved = await this.incidentRepository.save(newIncident);
     logger.info(`Incident ticket successfully registered with ID: ${incidentId}`);
     return saved;
   }
@@ -69,7 +73,7 @@ export class IncidentService implements IIncidentService {
    */
   public async getIncidents(): Promise<Incident[]> {
     logger.info('Fetching incidents lists from repository');
-    return this.incidentRepo.findAll();
+    return this.incidentRepository.findAll();
   }
 
   /**
@@ -89,7 +93,7 @@ export class IncidentService implements IIncidentService {
     updatedBy: string
   ): Promise<Incident> {
     logger.info(`Request received to update Incident ID: ${incidentId} status to ${status} by ${updatedBy}`);
-    const incident = await this.incidentRepo.findById(incidentId);
+    const incident = await this.incidentRepository.findById(incidentId);
     if (!incident) {
       logger.warn(`Incident status update rejected: ID ${incidentId} not found`);
       throw new NotFoundException('Incident not found');
@@ -117,7 +121,7 @@ export class IncidentService implements IIncidentService {
       incident.createdAt
     );
 
-    const saved = await this.incidentRepo.save(updatedIncident);
+    const saved = await this.incidentRepository.save(updatedIncident);
     logger.info(`Incident ID ${incidentId} timeline updated successfully`);
     return saved;
   }
@@ -133,7 +137,7 @@ export class IncidentService implements IIncidentService {
    */
   public async assignStaff(incidentId: string, staffName: string, updatedBy: string): Promise<Incident> {
     logger.info(`Assigning staff: ${staffName} to Incident ID: ${incidentId} by ${updatedBy}`);
-    const incident = await this.incidentRepo.findById(incidentId);
+    const incident = await this.incidentRepository.findById(incidentId);
     if (!incident) {
       logger.warn(`Incident staff assignment rejected: ID ${incidentId} not found`);
       throw new NotFoundException('Incident not found');
@@ -147,12 +151,14 @@ export class IncidentService implements IIncidentService {
       updatedBy
     });
 
+    const nextStatus: IncidentStatus = incident.status === 'Reported' ? 'Dispatched' : incident.status;
+
     const updatedIncident = new Incident(
       incident.id,
       incident.title,
       incident.description,
       incident.severity,
-      incident.status === 'Reported' ? 'Dispatched' : incident.status,
+      nextStatus,
       incident.location,
       incident.reportedBy,
       staffName,
@@ -161,7 +167,7 @@ export class IncidentService implements IIncidentService {
       incident.createdAt
     );
 
-    const saved = await this.incidentRepo.save(updatedIncident);
+    const saved = await this.incidentRepository.save(updatedIncident);
     logger.info(`Staff ${staffName} successfully assigned to Incident ID ${incidentId}`);
     return saved;
   }
@@ -175,7 +181,7 @@ export class IncidentService implements IIncidentService {
    */
   public async generateAiSummary(incidentId: string): Promise<Incident> {
     logger.info(`Request received to generate AI Executive summary for Incident ID: ${incidentId}`);
-    const incident = await this.incidentRepo.findById(incidentId);
+    const incident = await this.incidentRepository.findById(incidentId);
     if (!incident) {
       logger.warn(`AI incident summarization rejected: ID ${incidentId} not found`);
       throw new NotFoundException('Incident not found');
@@ -185,7 +191,7 @@ export class IncidentService implements IIncidentService {
     const prompt = this.constructBriefingPrompt(incident, timelineString);
 
     logger.info(`Triggering GenAI summary API context for Incident ID ${incidentId}`);
-    const aiRes = await aiProviderInstance.generateText(prompt, 'You generate corporate incident briefs.');
+    const aiRes = await aiProviderInstance.generateText(prompt, INCIDENT_BRIEF_PERSONA);
     
     const updatedIncident = new Incident(
       incident.id,
@@ -201,19 +207,26 @@ export class IncidentService implements IIncidentService {
       incident.createdAt
     );
 
-    const saved = await this.incidentRepo.save(updatedIncident);
+    const saved = await this.incidentRepository.save(updatedIncident);
     logger.info(`AI summary successfully compiled and persisted for Incident ID ${incidentId}`);
     return saved;
   }
 
-  // --- Private Helpers to Reduce Function Length & Complexity ---
-
+  /**
+   * Helper utility to serialize safety log timeline entries.
+   * @param timeline List of incident timeline details
+   */
   private formatTimelineLogs(timeline: Array<{ timestamp: string; status: IncidentStatus; updatedBy: string; comment: string }>): string {
     return timeline
       .map(t => `[${t.timestamp}] Status: ${t.status} | By: ${t.updatedBy} | Details: ${t.comment}`)
       .join('\n');
   }
 
+  /**
+   * Builds the structured briefing request prompt template.
+   * @param incident The incident entity details card
+   * @param timelineString Serialized safety log details
+   */
   private constructBriefingPrompt(incident: Incident, timelineString: string): string {
     return `
       You are an Incident Report Agent.
@@ -238,4 +251,16 @@ export class IncidentService implements IIncidentService {
   }
 }
 
-export const incidentServiceInstance = new IncidentService();
+let incidentServiceInstanceCache: IncidentService | null = null;
+
+/**
+ * Returns the active IncidentService instance.
+ * Instantiates the service lazily once the database repositories are initialized.
+ */
+export function getIncidentService(): IncidentService {
+  if (!incidentServiceInstanceCache) {
+    const repos = dbFactoryInstance.getRepositories();
+    incidentServiceInstanceCache = new IncidentService(repos.incidentRepository);
+  }
+  return incidentServiceInstanceCache;
+}

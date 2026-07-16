@@ -1,11 +1,19 @@
 import { Request, Response, NextFunction } from 'express';
-import { authServiceInstance } from '../../application/services/auth.service';
+import { getAuthService } from '../../application/services/auth.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 
+/**
+ * Controller handling user registration, login, and profile lookups.
+ * Strictly validates inputs, authorizes roles, and delegates business rules to AuthService.
+ */
 export class AuthController {
+  /**
+   * Registers a new user.
+   */
   public async register(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = await authServiceInstance.register({
+      const authService = getAuthService();
+      const user = await authService.register({
         username: req.body.username,
         passwordPlain: req.body.password,
         role: req.body.role,
@@ -22,9 +30,13 @@ export class AuthController {
     }
   }
 
+  /**
+   * Authenticats user credentials and returns a secure JWT token.
+   */
   public async login(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const result = await authServiceInstance.login(req.body.username, req.body.password);
+      const authService = getAuthService();
+      const result = await authService.login(req.body.username, req.body.password);
       res.status(200).json({
         status: 'Success',
         message: 'Login successful',
@@ -35,13 +47,18 @@ export class AuthController {
     }
   }
 
+  /**
+   * Retrieves profile details of the authenticated caller.
+   */
   public async getProfile(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      if (!req.user) {
+      const userPayload = req.user;
+      if (!userPayload) {
         res.status(401).json({ status: 'Error', message: 'Unauthorized' });
         return;
       }
-      const profile = await authServiceInstance.getUserProfile(req.user.id);
+      const authService = getAuthService();
+      const profile = await authService.getUserProfile(userPayload.id);
       res.status(200).json({
         status: 'Success',
         data: profile
